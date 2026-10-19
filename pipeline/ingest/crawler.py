@@ -136,6 +136,20 @@ class PoliteCrawler:
     def fetch_url(self, url: str, cycle_id: str, section_id: str, filename: str) -> Dict[str, Any]:
         """Fetch URL with rate limiting, retries, byte-for-byte caching, and conditional requests."""
         self._init_robots(url)
+        now_iso = datetime.now(timezone.utc).isoformat()
+        if self.respect_robots and self._robot_parser is not None and not self._robot_parser.can_fetch(self.user_agent, url):
+            return {
+                "url": url,
+                "local_path": "",
+                "sha256": "",
+                "etag": None,
+                "fetched_at": now_iso,
+                "status": "blocked_by_robots",
+                "bytes_length": 0,
+                "section_id": section_id,
+                "document_type": "html"
+            }
+
         dest_dir = self.cache_dir / cycle_id
         dest_dir.mkdir(parents=True, exist_ok=True)
         dest_path = dest_dir / filename
