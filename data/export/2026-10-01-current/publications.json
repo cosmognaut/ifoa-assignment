@@ -1,0 +1,20 @@
+[
+  {
+    "amendmentId": "AMDT 010/2026",
+    "cycleId": "2026-10-01-current",
+    "effectiveDate": "2026-10-01",
+    "ingestedAt": "2026-10-19T20:08:56.611561+00:00",
+    "manifestSha256": "7409471d44ded2a5988a167a3b3707855b0d83247a69e407bb36e37b06666409",
+    "notes": null,
+    "sourceKind": "LIVE",
+    "sourceUrl": null,
+    "stats": {
+      "error_count": 0,
+      "issue_count": 3,
+      "parsed_features": 619,
+      "total_documents": 12,
+      "warning_count": 3
+    },
+    "status": "promoted"
+  }
+]

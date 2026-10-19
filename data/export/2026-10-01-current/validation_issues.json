@@ -1,0 +1,29 @@
+[
+  {
+    "featureKey": "WPT/GIVOR",
+    "message": "Coordinates outside operational FIR bounding box: [6.391389, 48.658611]",
+    "publicationId": "2026-10-01-current",
+    "rawSnippet": "[6.391389, 48.658611]",
+    "ruleId": "RULE_OPERATIONAL_BBOX",
+    "section": "coordinates",
+    "severity": "warning"
+  },
+  {
+    "featureKey": "RTE/L179",
+    "message": "Route L179 references cross-border waypoint 'ROMIN' absent from national index",
+    "publicationId": "2026-10-01-current",
+    "rawSnippet": "ROMIN",
+    "ruleId": "RULE_UNRESOLVED_WAYPOINT",
+    "section": "ENR 3.2",
+    "severity": "warning"
+  },
+  {
+    "featureKey": "RTE/Z310",
+    "message": "Route Z310 references cross-border waypoint 'BATAK' absent from national index",
+    "publicationId": "2026-10-01-current",
+    "rawSnippet": "BATAK",
+    "ruleId": "RULE_UNRESOLVED_WAYPOINT",
+    "section": "ENR 3.2",
+    "severity": "warning"
+  }
+]

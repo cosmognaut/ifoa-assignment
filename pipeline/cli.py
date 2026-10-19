@@ -31,6 +31,12 @@ from pipeline.parse.airspace import AirspaceParser
 from pipeline.validate.rules import ValidationEngine
 from pipeline.diff.engine import DiffEngine, DiffReport
 from pipeline.load.load import MongoLoader
+from pymongo.errors import PyMongoError
+
+
+class ExportError(RuntimeError):
+    """A cycle cannot be exported: unknown cycle, or a cycle with no features."""
+
 
 def _cache_dir(args=None) -> Path:
     """The raw cache root, single-sourced from crawler.yaml with CLI override."""
@@ -661,6 +667,139 @@ def cmd_load(args):
     if promote and not passed:
         sys.exit(1)
 
+# ---------------------------------------------------------------------------
+# Dataset export
+#
+# Pure serialisation helpers, plus one thin command that reads MongoDB. Keeping
+# the shaping functions free of any database handle is what makes them unit
+# testable without a running MongoDB (see tests/test_export.py).
+# ---------------------------------------------------------------------------
+
+# The camelCase envelope the API already serves. Anything else a Mongo document
+# carries (_id, future bookkeeping columns) is deliberately not published.
+FEATURE_ENVELOPE_KEYS: Tuple[str, ...] = (
+    "naturalKey",
+    "parentKey",
+    "featureType",
+    "publicationId",
+    "effectiveFrom",
+    "effectiveTo",
+    "sourceClass",
+    "temporality",
+    "contentHash",
+    "fields",
+)
+
+
+def strip_mongo_id(doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Drop `_id`: an ObjectId is neither JSON serialisable nor part of the contract."""
+    return {key: value for key, value in doc.items() if key != "_id"}
+
+
+def build_feature_collection(feature_docs: List[Dict[str, Any]]) -> Dict[str, Any]:
+    """Wrap stored feature documents in a GeoJSON FeatureCollection, sorted by naturalKey."""
+    features: List[Dict[str, Any]] = []
+    for doc in feature_docs:
+        clean = strip_mongo_id(doc)
+        features.append({
+            "type": "Feature",
+            "geometry": clean.get("geometry"),
+            "properties": {key: clean.get(key) for key in FEATURE_ENVELOPE_KEYS},
+        })
+    features.sort(key=lambda feature: str(feature["properties"].get("naturalKey") or ""))
+    return {"type": "FeatureCollection", "features": features}
+
+
+def build_publication_list(publication_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Publication documents sorted by effectiveDate (then cycleId, for a total order)."""
+    cleaned = [strip_mongo_id(doc) for doc in publication_docs]
+    return sorted(
+        cleaned,
+        key=lambda doc: (str(doc.get("effectiveDate") or ""), str(doc.get("cycleId") or "")),
+    )
+
+
+def build_issue_list(issue_docs: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Validation issues sorted by (ruleId, featureKey); issues without a feature key sort first."""
+    cleaned = [strip_mongo_id(doc) for doc in issue_docs]
+    return sorted(
+        cleaned,
+        key=lambda doc: (str(doc.get("ruleId") or ""), str(doc.get("featureKey") or "")),
+    )
+
+
+def serialise_json(payload: Any) -> str:
+    """Deterministic JSON text: stable key order, UTF-8 preserved, trailing newline."""
+    return json.dumps(payload, indent=2, sort_keys=True, ensure_ascii=False) + "\n"
+
+
+def require_exportable(
+    cycle_id: str,
+    publication_docs: List[Dict[str, Any]],
+    feature_docs: List[Dict[str, Any]],
+) -> None:
+    """Raise ExportError rather than writing empty files for a cycle that cannot be exported."""
+    if not publication_docs:
+        raise ExportError(f"Unknown cycle '{cycle_id}': no publication document for it in the database.")
+    if not feature_docs:
+        raise ExportError(
+            f"Cycle '{cycle_id}' has no features stored; refusing to write an empty dataset."
+        )
+
+
+def write_export(
+    out_root: Path,
+    cycle_id: str,
+    feature_docs: List[Dict[str, Any]],
+    publication_docs: List[Dict[str, Any]],
+    issue_docs: List[Dict[str, Any]],
+) -> Dict[str, Path]:
+    """Write the three dataset files under `<out_root>/<cycle_id>/` and return their paths."""
+    target = out_root / cycle_id
+    target.mkdir(parents=True, exist_ok=True)
+    payloads = {
+        "features.geojson": build_feature_collection(feature_docs),
+        "publications.json": build_publication_list(publication_docs),
+        "validation_issues.json": build_issue_list(issue_docs),
+    }
+    paths: Dict[str, Path] = {}
+    for filename, payload in payloads.items():
+        path = target / filename
+        with open(path, "w", encoding="utf-8", newline="\n") as f:
+            f.write(serialise_json(payload))
+        paths[filename] = path
+    return paths
+
+
+def cmd_export(args):
+    """Exports one cycle's dataset as reviewable JSON, straight from MongoDB."""
+    cycle_id = args.cycle
+    out_root = Path(args.out)
+
+    try:
+        loader = MongoLoader(uri=getattr(args, "mongo_uri", None))
+        publication_docs = loader.get_publications(cycle_id)
+        feature_docs = loader.get_features(cycle_id)
+        issue_docs = loader.get_issues(cycle_id)
+    except PyMongoError as exc:
+        print(f"[Export] MongoDB error: {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        require_exportable(cycle_id, publication_docs, feature_docs)
+    except ExportError as exc:
+        print(f"[Export] {exc}", file=sys.stderr)
+        sys.exit(1)
+
+    paths = write_export(out_root, cycle_id, feature_docs, publication_docs, issue_docs)
+
+    print(f"[Export] Cycle:    {cycle_id}")
+    print(f"[Export] Features: {len(feature_docs)}")
+    print(f"[Export] Issues:   {len(issue_docs)}")
+    for filename, path in paths.items():
+        print(f"[Export] {filename:<22} {path.resolve()}")
+
+
 def cmd_run(args):
     """Single-pass end-to-end runner: verifies cache, parses once, validates, diffs, and promotes or quarantines."""
     cycle_id = args.cycle
@@ -749,6 +888,13 @@ def main():
     p_run.add_argument("--from-zip", help="Path to local ZIP archive")
     p_run.add_argument("--from-dir", help="Path to local unpacked directory")
     p_run.set_defaults(func=cmd_run)
+
+    # export
+    p_export = subparsers.add_parser("export", help="Export one cycle's dataset as JSON files")
+    p_export.add_argument("--cycle", required=True, help="Cycle ID")
+    p_export.add_argument("--out", required=True, help="Output root directory, e.g. data/export")
+    p_export.add_argument("--mongo-uri", help="MongoDB connection URI")
+    p_export.set_defaults(func=cmd_export)
 
     args = parser.parse_args()
     if hasattr(args, "func"):

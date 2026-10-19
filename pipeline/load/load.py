@@ -102,6 +102,10 @@ class MongoLoader:
     def get_promoted_publication(self) -> Optional[Dict[str, Any]]:
         return self.publications.find_one({"status": PublicationStatus.PROMOTED.value}, sort=[("effectiveDate", -1)])
 
+    def get_publications(self, cycle_id: str) -> List[Dict[str, Any]]:
+        """Every publication document for one cycle, `_id` projected away."""
+        return list(self.publications.find({"cycleId": cycle_id}, {"_id": 0}))
+
     def get_features(self, cycle_id: str, feature_type: Optional[str] = None) -> List[Dict[str, Any]]:
         query: Dict[str, Any] = {"publicationId": cycle_id}
         if feature_type:
