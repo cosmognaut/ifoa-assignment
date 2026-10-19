@@ -156,15 +156,12 @@ This document records the architectural, data modeling, and engineering decision
 
 ---
 
-## 14. Bitemporal History & `effective_to` Supersession
+## 14. Bitemporal Schema Design & `effective_to` Status
 
-* **Context**: The schema models `effective_from` and `effective_to` ("null if active"), but features were previously inserted with `effective_to: None` and never closed when new cycles arrived.
-* **Decision**: In `MongoLoader.promote_publication(cycle_id, effective_date)`:
-  1. Locate the previously promoted publication.
-  2. On all active features belonging to that previous cycle (`effectiveTo: None`), atomically update `effectiveTo = new_publication.effective_date`.
-  3. Mark the new publication as promoted.
+* **Context**: The schema models `effective_from` and `effective_to` ("null if active").
+* **Decision**: All parsed features initialize with `effective_to: None` representing active validity. Multi-cycle supersession logic (`effectiveTo = new_cycle.effective_date`) is modeled in `MongoLoader.promote_publication` for future multi-cycle archive execution, but in current single-cycle runs, all features remain active with `effective_to: null`. Point-in-time ('as of date') time-travel queries are not currently supported on the CLI.
 * **Reasoning**:
-  - Fully closes the bitemporal model. Any consumer can query: *"What was the active declared distance for Runway 01 on 2026-10-15?"* by querying `effectiveFrom <= date AND (effectiveTo > date OR effectiveTo IS NULL)`.
+  - Keeps the database schema strictly aligned with the contract while honestly documenting that all active features currently carry `effective_to: null`.
 
 ---
 

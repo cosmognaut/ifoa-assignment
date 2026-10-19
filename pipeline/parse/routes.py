@@ -27,7 +27,10 @@ class RouteParser:
         self.publisher_name = require_str(require(crawler_cfg, "publisher", "crawler.yaml"), "name", "crawler.yaml publisher")
 
         sections_cfg = load_sections_config()
-        self.limit_tokens = sections_cfg.get("vertical_limit_tokens", ["FL", "FT", "M", "UNL", "SFC", "GND"])
+        vlim_cfg = require(sections_cfg, "vertical_limits", "sections.yaml")
+        self.upper_tokens = require(vlim_cfg, "upper_tokens", "sections.yaml vertical_limits")
+        self.lower_tokens = require(vlim_cfg, "lower_tokens", "sections.yaml vertical_limits")
+        self.limit_tokens = self.upper_tokens + self.lower_tokens
         sections_list = sections_cfg.get("sections", [])
         self.spec_31 = next((s for s in sections_list if s["id"] == "ENR-3.1"), {})
         self.spec_32 = next((s for s in sections_list if s["id"] == "ENR-3.2"), {})
@@ -157,7 +160,7 @@ class RouteParser:
                     if len(c) < 25 and not c.startswith("Route") and any(tok in c for tok in self.limit_tokens):
                         lim, _ = CONVERTER_REGISTRY["vertical_limit"](c)
                         if lim and lim.get("value") is not None:
-                            if not upper_limit_parsed and any(tok in c for tok in ("FL", "UNL")):
+                            if not upper_limit_parsed and any(tok in c for tok in self.upper_tokens):
                                 upper_limit_parsed = lim
                                 if self.require_limit_units and (lim.get("unit") is None or lim.get("reference") is None):
                                     issues.append(ValidationIssue(
@@ -169,7 +172,7 @@ class RouteParser:
                                         message=f"Upper vertical limit '{c}' on route {route_desig} missing unit or reference",
                                         raw_snippet=c
                                     ))
-                            elif not lower_limit_parsed and lim != upper_limit_parsed:
+                            elif not lower_limit_parsed and any(tok in c for tok in self.lower_tokens) and lim != upper_limit_parsed:
                                 lower_limit_parsed = lim
                                 if self.require_limit_units and (lim.get("unit") is None or lim.get("reference") is None):
                                     issues.append(ValidationIssue(

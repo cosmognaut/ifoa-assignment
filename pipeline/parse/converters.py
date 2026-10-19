@@ -6,19 +6,23 @@ This also houses CONVERTER_REGISTRY: Dict[str, Callable] which maps string names
 """
 import re
 from typing import Optional, Tuple, Any, Dict, Callable
-from pipeline.config import load_sections_config
+from pipeline.config import load_sections_config, require, require_str
 
 _sections_cfg = load_sections_config()
-_regex_cfg = _sections_cfg.get("converters_regex", {})
-_surface_cfg = _sections_cfg.get("surface_mapping", {})
+_regex_cfg = require(_sections_cfg, "converters_regex", "sections.yaml")
+_surface_cfg = require(_sections_cfg, "surface_mapping", "sections.yaml")
+_vlim_cfg = require(_sections_cfg, "vertical_limits", "sections.yaml")
 
-RE_COORD_DMS = re.compile(_regex_cfg["coordinates_dms"])
-RE_COORD_DMS_COMPACT = re.compile(_regex_cfg["coordinates_dms_compact"])
-RE_DIMENSIONS = re.compile(_regex_cfg["dimensions"])
-RE_BEARING = re.compile(_regex_cfg["bearing"])
-RE_ELEVATION = re.compile(_regex_cfg["elevation"])
-RE_ELEVATION_FALLBACK = re.compile(_regex_cfg["elevation_fallback"])
-RE_DISTANCE = re.compile(_regex_cfg["distance"])
+RE_COORD_DMS = re.compile(require_str(_regex_cfg, "coordinates_dms", "sections.yaml converters_regex"))
+RE_COORD_DMS_COMPACT = re.compile(require_str(_regex_cfg, "coordinates_dms_compact", "sections.yaml converters_regex"))
+RE_DIMENSIONS = re.compile(require_str(_regex_cfg, "dimensions", "sections.yaml converters_regex"))
+RE_BEARING = re.compile(require_str(_regex_cfg, "bearing", "sections.yaml converters_regex"))
+RE_ELEVATION = re.compile(require_str(_regex_cfg, "elevation", "sections.yaml converters_regex"))
+RE_ELEVATION_FALLBACK = re.compile(require_str(_regex_cfg, "elevation_fallback", "sections.yaml converters_regex"))
+RE_DISTANCE = re.compile(require_str(_regex_cfg, "distance", "sections.yaml converters_regex"))
+RE_LIMIT_FL = re.compile(require_str(_regex_cfg, "limit_flight_level", "sections.yaml converters_regex"))
+RE_LIMIT_ALT = re.compile(require_str(_regex_cfg, "limit_altitude", "sections.yaml converters_regex"))
+RE_LIMIT_BARE = re.compile(require_str(_regex_cfg, "limit_bare_number", "sections.yaml converters_regex"))
 
 def convert_coordinates(coord_str: str) -> Tuple[Optional[Tuple[float, float]], Optional[str]]:
     """
@@ -125,29 +129,41 @@ def convert_surface_strength(raw_text: str) -> Tuple[Tuple[str, str], Optional[s
 
 def convert_vertical_limit(raw_text: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
     """
-    Parses vertical limit strings like 'FL 660', 'FL 055', '4500 FT AMSL', 'SFC', 'UNL'.
-    Returns (dict with value, unit, reference), unit.
-    Bare numbers without unit/ref return unit=None, reference=None for validation flagging.
+    Parses vertical limit strings according to declarative vertical_limits spec in sections.yaml.
+    Zero hardcoded domain string or sentinel literals.
     """
     if not raw_text or raw_text.upper() == "NIL":
         return None, None
     u = re.sub(r"[\s\u2009\xa0]+", " ", raw_text.upper().strip())
-    if u in ("SFC", "GND"):
-        return {"value": 0.0, "unit": "FT", "reference": "SFC"}, "FT"
-    if u == "UNL":
-        return {"value": 999.0, "unit": "FL", "reference": "UNL"}, "FL"
 
-    m_fl = re.match(r"^FL\s*(\d+)$", u)
+    if u in _vlim_cfg["surface_tokens"]:
+        unit = _vlim_cfg["surface_unit"]
+        return {
+            "value": float(_vlim_cfg["surface_val"]),
+            "unit": unit,
+            "reference": _vlim_cfg["surface_reference"]
+        }, unit
+
+    if u in _vlim_cfg["unlimited_tokens"]:
+        unit = _vlim_cfg["unlimited_unit"]
+        return {
+            "value": float(_vlim_cfg["unlimited_sentinel_val"]),
+            "unit": unit,
+            "reference": _vlim_cfg["unlimited_reference"]
+        }, unit
+
+    m_fl = RE_LIMIT_FL.match(u)
     if m_fl:
-        return {"value": float(m_fl.group(1)), "unit": "FL", "reference": "AMSL"}, "FL"
+        unit = _vlim_cfg["unlimited_unit"]  # FL
+        return {"value": float(m_fl.group(1)), "unit": unit, "reference": _vlim_cfg["default_altitude_reference"]}, unit
 
-    m_ft = re.match(r"^(\d+(?:\.\d+)?)\s*(FT|M)\s*(AMSL|AGL|SFC)?$", u)
+    m_ft = RE_LIMIT_ALT.match(u)
     if m_ft:
-        ref = m_ft.group(3) or "AMSL"
+        ref = m_ft.group(3) or _vlim_cfg["default_altitude_reference"]
         unit = m_ft.group(2)
         return {"value": float(m_ft.group(1)), "unit": unit, "reference": ref}, unit
 
-    m_bare = re.match(r"^(\d+(?:\.\d+)?)$", u)
+    m_bare = RE_LIMIT_BARE.match(u)
     if m_bare:
         # Bare number without unit or reference: data quality error
         return {"value": float(m_bare.group(1)), "unit": None, "reference": None}, None

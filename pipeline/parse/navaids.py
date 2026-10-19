@@ -29,6 +29,7 @@ class NavaidParser:
         self.type_tokens = sections_cfg.get("navaid_type_tokens", {})
         sections_list = sections_cfg.get("sections", [])
         self.spec_enr = next((s for s in sections_list if s["id"] == "ENR-4.1"), {})
+        self.dme_unit = self.spec_enr.get("fields", {}).get("dmeElevation", {}).get("unit")
 
         regex_cfg = sections_cfg.get("converters_regex", {})
         self.re_mhz = re.compile(regex_cfg.get("frequency_mhz", "(\\d+(?:\\.\\d+)?)\\s*MHZ"))
@@ -134,7 +135,7 @@ class NavaidParser:
                     dme_elev_val, _ = CONVERTER_REGISTRY["elevation"](dme_elev_raw)
                     if dme_elev_val is not None:
                         existing_feat.fields["dmeElevation"] = FeatureField(
-                            value=dme_elev_val, unit="FT", source=self.publisher_name,
+                            value=dme_elev_val, unit=self.dme_unit, source=self.publisher_name,
                             section="ENR 4.1", effective_date=self.effective_date,
                             retrieved_at=retrieved_at, source_url=source_url,
                             parser_version=PARSER_VERSION, raw_text=dme_elev_raw
@@ -208,7 +209,7 @@ class NavaidParser:
             }
             if dme_elev_val is not None:
                 fields["dmeElevation"] = FeatureField(
-                    value=dme_elev_val, unit="FT", source=self.publisher_name,
+                    value=dme_elev_val, unit=self.dme_unit, source=self.publisher_name,
                     section="ENR 4.1", effective_date=self.effective_date,
                     retrieved_at=retrieved_at, source_url=source_url,
                     parser_version=PARSER_VERSION, raw_text=dme_elev_raw

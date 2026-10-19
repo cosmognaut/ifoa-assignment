@@ -33,6 +33,9 @@ converters_regex:
   distance: "(\\d+(?:[\\s\\u2009\\xa0]\\d+)?)"
   frequency_mhz: "(\\d+(?:\\.\\d+)?)\\s*MHZ"
   frequency_ch: "CH\\s*(\\d+)[XY]?"
+  limit_flight_level: "^FL\\s*(\\d+)$"
+  limit_altitude: "^(\\d+(?:\\.\\d+)?)\\s*(FT|M)\\s*(AMSL|AGL|SFC)?$"
+  limit_bare_number: "^(\\d+(?:\\.\\d+)?)$"
 
 surface_mapping:
   asphalt: "ASPH"
@@ -40,13 +43,28 @@ surface_mapping:
   grass: "GRAS"
   default: "OTHER"
 
-vertical_limit_tokens:
-  - "FL"
-  - "FT"
-  - "M"
-  - "UNL"
-  - "SFC"
-  - "GND"
+vertical_limits:
+  surface_tokens:
+    - "SFC"
+    - "GND"
+  unlimited_tokens:
+    - "UNL"
+  upper_tokens:
+    - "FL"
+    - "UNL"
+  lower_tokens:
+    - "FL"
+    - "FT"
+    - "M"
+    - "SFC"
+    - "GND"
+  unlimited_sentinel_val: 999.0
+  unlimited_unit: "FL"
+  unlimited_reference: "UNL"
+  surface_val: 0.0
+  surface_unit: "FT"
+  surface_reference: "SFC"
+  default_altitude_reference: "AMSL"
 
 navaid_type_tokens:
   "DVOR / DME": "DVOR/DME"
