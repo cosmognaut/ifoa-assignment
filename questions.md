@@ -45,7 +45,7 @@ Stop talking. Ask what they want to see.
 
 ### 1.1 Why is a cycle keyed on the effective date, not the download date or the amendment number?
 
-A cycle id is the AIRAC effective date, with the edition role appended when two editions share a date — this repo's id is `2026-10-01-current`. The download date is an accident of when the crawler ran: re-fetching the same cycle tomorrow must land on the same record, or every re-crawl looks like a brand-new cycle. Amendment ids are not stable identifiers — ADR 2 records that they reset annually, and `discovery.py` documents the case where a preliminary and a final edition share an effective date, which is why the edition role gets appended on collision. The result is that the key is a fact about the publication, not about our run.
+A cycle id is the AIRAC effective date, with the edition role appended when two editions share a date — this repo's id is `2026-10-01-current`. The download date is an accident of when the crawler ran: re-fetching the same cycle tomorrow must land on the same record, or every re-crawl looks like a brand-new cycle. Amendment ids are not stable identifiers — ADR 2 records that they reset annually, and `discovery.py` documents the case where a preliminary and a final edition share an effective date, which is why the edition role gets appended on collision. The result is that the key is a fact about the publication, not about our run — though the suffix half of that rule is order-dependent, which is why today's discovery returns `2026-10-01` for the current edition while the dataset is keyed `2026-10-01-current` (see 1.8).
 
 `prove it:` `grep -n "cycle_id = " pipeline/ingest/discovery.py` (lines ~305–310), `curl -s localhost:3000/api/publications`, `ls data/raw/`
 
@@ -69,7 +69,7 @@ After parsing, `ValidationEngine.evaluate_promotion_gate` checks four declarativ
 
 ### 1.5 What are the four change buckets and where do they surface?
 
-`NEW`, `MODIFIED`, `DELETED`, `UNCHANGED`, defined in `ChangeStatus` (`pipeline/models/change.py`). `pipeline diff` prints the counts plus the first 20 change rows; the rows are persisted to the `changes` collection; `GET /api/changes` serves them. Be honest about the current state: the only stored run is degenerate — 321 rows, all `NEW`, from `2026-10-01` to `2026-10-01-current` — because there is only one cycle on disk. The engine is proven by `tests/test_diff_and_quarantine.py`, which builds a second synthetic cycle by mutating a real one.
+`NEW`, `MODIFIED`, `DELETED`, `UNCHANGED`, defined in `ChangeStatus` (`pipeline/models/change.py`). `pipeline diff` prints the counts plus the first 20 change rows; the rows are persisted to the `changes` collection; `GET /api/changes` serves them. Be precise about the only stored run: its 321 rows are all `NEW`, and they pair `2026-10-01` with `2026-10-01-current` — two ids for the same physical edition, because the cycle id gains a role suffix only on collision and the collision resolved differently at acquisition time. That is a known defect in the key scheme (1.8), not a change record. The engine itself is proven by `tests/test_diff_and_quarantine.py`, which mutates a real parse into a synthetic second cycle.
 
 `prove it:` `grep -n "ChangeStatus" pipeline/models/change.py`, `curl -s localhost:3000/api/changes | head -c 300`
 
@@ -84,6 +84,12 @@ Publisher URLs, section anchors, table headers, units, validation rules and thre
 Four things. The raw bytes are cached per cycle and every file's SHA-256 is recorded in `manifest.jsonl`, so parsing is replayable against an exact snapshot and `ingest verify` audits the cache before parsing begins. The content hash normalises away everything that is not data (1.2, 1.3). The golden-value tests pin real AIP numbers, so a silent shape change fails the suite rather than the diff. And `pipeline export` is deterministic: re-running it produces byte-identical files.
 
 `prove it:` `.venv/bin/python -m pipeline.cli ingest verify --cycle 2026-10-01-current` → `Verification PASSED`; `sha256sum -c` on `data/export/2026-10-01-current/`
+
+### 1.8 Is your cycle id stable?
+
+Not across runs — that is a known defect in the key scheme. The rule is the AIRAC effective date plus the edition role, but the role is appended only when two editions share a date, so which edition keeps the bare date depends on iteration order over `publisher.cycle_folders` and on which editions exist at that moment. Today `ingest cycles` returns `2026-10-01` for the current edition and `2026-10-01-previous` for the previous one, while the committed snapshot, the database, the export and the API are all keyed `2026-10-01-current`; the only stored diff therefore "compares" two ids for the same physical edition and calls all 619 features `NEW`. The fix is to make the key order-independent — always `{date}-{role}`, or keep the bare date and carry the role in its own field — and it has not been applied because renaming would orphan the committed cache, the database and `data/export/`, and the raw bytes cannot be re-fetched through the portal to rebuild them.
+
+`prove it:` `uv run python -m pipeline.cli ingest cycles` → `[('current', '2026-10-01'), ('previous', '2026-10-01-previous'), ('preview', '2026-10-29')]`; `.venv/bin/python -c "from pymongo import MongoClient; db=MongoClient('mongodb://localhost:27017/aero_pipeline')['aero_pipeline']; print({(c['fromCycle'], c['toCycle'], c['status']) for c in db.changes.find({}, {'_id': 0, 'fromCycle': 1, 'toCycle': 1, 'status': 1})})"` → `{('2026-10-01', '2026-10-01-current', 'NEW')}`
 
 ---
 
@@ -143,7 +149,7 @@ Modelled, not ingested. `sourceClass` has `SUP` and `NOTAM` values; nothing fetc
 They do not exist. All 224 airspace and special-use-area features carry `geometry: null` and the legal prose is preserved verbatim. This is deliberate (ADR 16). Closing it is a geodesic interpreter — arcs, circle sampling, sovereign border shapefiles — plus a fixture set of published boundaries to validate against. The raw text is stored precisely so that work needs no re-fetch.
 
 **3.6 "Has the diff run against two real cycles?"**
-No. Only `2026-10-01-current` is on disk; the stored `changes` rows are a single-cycle artefact (321 rows, all `NEW`). The engine is established by `tests/test_diff_and_quarantine.py`, which mutates a real parse into a synthetic second cycle and asserts NEW/MODIFIED/DELETED counts and field-level changes. Closing it is operational, not code: fetch the 2026-10-29 cycle (`ingest fetch --cycle …`) and run `diff --from … --to …`.
+No. Only the `2026-10-01-current` snapshot is on disk, and the stored `changes` rows are not a cycle-to-cycle comparison at all: they pair `2026-10-01` with `2026-10-01-current`, two ids for the same physical edition, because the cycle id gains a role suffix only on collision and the collision resolved differently at acquisition time — a known defect in the key scheme (1.8), not a change record. The engine is established by `tests/test_diff_and_quarantine.py`, which mutates a real parse into a synthetic second cycle and asserts NEW/MODIFIED/DELETED counts and field-level changes. Closing it is operational: obtain the `2026-10-29` preview through the offline package and run `diff --from 2026-10-01-current --to 2026-10-29`.
 
 **3.7 "Is `effectiveTo` populated?"**
 No — all 619 features are `null`. The supersession logic exists (`MongoLoader.promote_publication` back-fills `effectiveTo` on the previously promoted cycle), but it has never had a second real cycle to act on, so there is nothing to show. Do not claim bitemporal queries work; the schema is bitemporal, the data is not yet.
@@ -166,6 +172,7 @@ Say the left thing and you lose the room; say the right thing and you look like 
 | Do not say | Say instead |
 |---|---|
 | "The map shows the airspace." | "The map shows point and line features — aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 224 features that have no geometry." |
+| "Here's `/api/changes` — that's the diff working." | "Not as evidence. The only stored rows are a degenerate same-edition comparison (321 rows, all `NEW`, pairing `2026-10-01` with `2026-10-01-current`) because of the cycle-id defect in 1.8. Show `tests/test_diff_and_quarantine.py` instead — that is the diff actually classifying NEW / MODIFIED / DELETED / UNCHANGED." |
 | "There are about 70 tests." | "81: 37 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 18 web (Vitest + jsdom, hermetic)." |
 | "Let me re-fetch it live so you can see." | "A live fetch is refused — `robots.txt` disallows automated access — so there is nothing to watch. The committed snapshot in `data/raw/2026-10-01-current/` is what the API and the console are serving." |
 | "The pipeline runs on a schedule." | "It does not. `check-updates` is a command a human runs; there is no cron entry and no CI config — `.github/` does not exist in the repo." |
@@ -193,7 +200,7 @@ For the LLM answer, have one concrete example ready: the coordinate display. The
 | Web entry chunk | 252.11 kB, **77.69 kB gzip**; map chunk 1,061.45 kB (290.08 kB gzip) |
 | API endpoints | **8** read-only (7 `app.get('/api/…')` routes + 1 regex route for slash-bearing natural keys) |
 | ADRs | **27** (`DECISION_LOG.md`) |
-| Known limits documented | **8** (`ARCHITECTURE.md` → Known limits) |
+| Known limits documented | **9** (`ARCHITECTURE.md` → Known limits) |
 | Register rows | 224 (all airspace + special-use areas) |
 | Promotion gate | 0 errors · 100 warnings · 0.0 % disappeared runways · 5.0 % disappeared features |
 | Live crawl | **refused**: `robots.txt` is `User-Agent: *` / `Disallow: /`; 12 documents enumerated, 0 bytes fetched |
