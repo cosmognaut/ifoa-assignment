@@ -75,6 +75,30 @@ Every extracted value is wrapped in a `FeatureField` receipt block that preserve
 - **`retrieved_at`**: Exact UTC timestamp when network packet arrived.
 - **`raw_text`**: Unaltered, verbatim snippet from the HTML cell for discrepancy verification.
 
+## Read-Only JSON API (`api/`)
+
+A small Node service exposes the loaded cycle as JSON so a map or any other client can consume it. It is strictly read-only and adds no writes.
+
+```bash
+cd api && npm ci        # reproducible install from package-lock.json
+npm test                # 23 integration tests against the local database
+npm start               # http://localhost:3000  (PORT / MONGO_URI env override)
+```
+
+Configuration is read from `config/database.yaml` and `config/validation.yaml`, not duplicated in JS.
+
+| Endpoint | Returns |
+|---|---|
+| `GET /api/health` | `{ok, features, collections}` |
+| `GET /api/publications` | Publications, newest effective date first |
+| `GET /api/feature-types` | `[{featureType, count}]` — lets a client build layers from data |
+| `GET /api/features` | GeoJSON `FeatureCollection`; filters: `publicationId`, `featureType`, `bbox`, `withGeometry=true` |
+| `GET /api/features/:naturalKey` | One feature, e.g. `EBBR/RWY/25L` |
+| `GET /api/airports/:icao` | `{aerodrome, runwayDirections, runways}` |
+| `GET /api/changes?from=&to=` | Field-level diff rows between two cycles |
+
+Of 619 features, 395 carry geometry and 224 (`airspace`, `specialUseArea`) have `geometry: null` by design. `/api/features` therefore returns **all** matching features by default and leaves `geometry` null; map clients pass `withGeometry=true` to receive only the 395 drawable ones. Provenance keys inside `fields` are passed through unmodified (snake_case preserved, `999/UNL` sentinel untouched).
+
 ## Known Limitations
 1. **Section Coverage Scope**: Currently parses AD 2.2, AD 2.3, AD 2.6, AD 2.12, AD 2.13 for configured aerodromes (EBBR, EBCI, EBLG), ENR 4.1 (Radio Navigation Aids), ENR 4.4 (Significant Points / Waypoints), ENR 3.2 (Upper ATS Routes), ENR 2.1 (Airspace), and ENR 5.1/5.2 (Special-Use Airspace). ENR 3.1 publishes zero route tables in Belgian airspace (explicitly published by skeyes as `NIL`). GEN 0.2 and GEN 2.5 are downloaded during discovery to verify amendment schedules but are not parsed into domain feature entities. AD 2.19 (Airport ILS / localizer tables) is indexed in discovery but not yet converted to features; aerodrome navigation relies on the en-route radio aid dataset.
 2. **Airspace Geometry**: Airspace boundaries and special-use areas are extracted as attributes and verbatim legal prose (`lateralLimitsRaw`), but geometry is strictly `null`. Complex geodesic arcs, circle radii, and national borders are not synthesized into polygon approximations.

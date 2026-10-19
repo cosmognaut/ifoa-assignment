@@ -1,0 +1,16 @@
+{
+  "name": "aero-viewer-api",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Read-only HTTP viewer over the eAIP MongoDB database",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node --test"
+  },
+  "dependencies": {
+    "express": "^5.1.0",
+    "js-yaml": "^4.1.0",
+    "mongodb": "^6.20.0"
+  }
+}

@@ -1,0 +1,21 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>eAIP Viewer API</title>
+  </head>
+  <body>
+    <h1>eAIP Viewer API</h1>
+    <p>Read-only JSON endpoints:</p>
+    <ul>
+      <li><code>GET /api/health</code></li>
+      <li><code>GET /api/publications</code></li>
+      <li><code>GET /api/feature-types</code></li>
+      <li><code>GET /api/features</code> (publicationId, featureType, bbox, withGeometry)</li>
+      <li><code>GET /api/features/:naturalKey</code></li>
+      <li><code>GET /api/airports/:icao</code></li>
+      <li><code>GET /api/changes?from=...&amp;to=...</code></li>
+    </ul>
+  </body>
+</html>

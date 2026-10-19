@@ -8,3 +8,7 @@ wheels/
 
 # Virtual environments
 .venv
+
+# Node API dependencies
+node_modules/
+api/node_modules/
