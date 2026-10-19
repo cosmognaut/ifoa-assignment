@@ -4,6 +4,11 @@ import type { Field } from '../types';
 const PROVENANCE_KEYS = ['source', 'section', 'effective_date', 'retrieved_at'] as const;
 const PROVENANCE_TAIL_KEYS = ['parser_version'] as const;
 
+/** '.t1' renders upper case; drop the underscores so keys read as labels. */
+function label(key: string): string {
+  return key.replace(/_/g, ' ');
+}
+
 function linkTarget(url: string): string | null {
   return /^https?:\/\//i.test(url) ? url : null;
 }
@@ -38,24 +43,24 @@ export function ProvenanceBlock({ field }: ProvenanceBlockProps) {
           <dl className="provenance-grid">
             {PROVENANCE_KEYS.map((key) => (
               <div className="provenance-row" key={key}>
-                <dt className="provenance-key t1">{key}</dt>
+                <dt className="provenance-key t1">{label(key)}</dt>
                 <dd className={valueClass(key)}>{field[key]}</dd>
               </div>
             ))}
             <div className="provenance-row">
-              <dt className="provenance-key t1">source_url</dt>
+              <dt className="provenance-key t1">source url</dt>
               <dd className={valueClass('source_url')}>
                 {renderSourceUrl(field.source_url)}
               </dd>
             </div>
             {PROVENANCE_TAIL_KEYS.map((key) => (
               <div className="provenance-row" key={key}>
-                <dt className="provenance-key t1">{key}</dt>
+                <dt className="provenance-key t1">{label(key)}</dt>
                 <dd className={valueClass(key)}>{field[key]}</dd>
               </div>
             ))}
           </dl>
-          <div className="provenance-raw-header t1">raw_text</div>
+          <div className="provenance-raw-header t1">raw text</div>
           <div className="raw-well t2 mono">{field.raw_text}</div>
         </>
       )}

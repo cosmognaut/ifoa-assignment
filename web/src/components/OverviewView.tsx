@@ -6,13 +6,21 @@ function textValue(value: unknown): string | null {
   return typeof value === 'string' && value.trim() !== '' ? value : null;
 }
 
-function aerodromeName(feature: GeoJsonFeature): string | null {
+function aerodromeFullName(feature: GeoJsonFeature): string | null {
   const fields = feature.properties.fields;
-  for (const key of ['designation', 'name']) {
+  for (const key of ['airportName', 'designation', 'name']) {
     const text = textValue(fields[key]?.value);
     if (text !== null) return text;
   }
   return null;
+}
+
+/** The AIP prints "BRUSSELS / Brussels-National"; show only the airport part. */
+function aerodromeName(feature: GeoJsonFeature): string | null {
+  const full = aerodromeFullName(feature);
+  if (full === null) return null;
+  const separator = full.indexOf(' / ');
+  return separator === -1 ? full : full.slice(separator + 3).trim();
 }
 
 function aerodromeElevation(feature: GeoJsonFeature): string | null {
@@ -119,6 +127,28 @@ export function OverviewView({
               ? 'Publication cycle unavailable.'
               : `${publication.cycleId} · ${publication.amendmentId} · effective ${publication.effectiveDate}`}
           </p>
+          {aerodromes.length === 0 ? null : (
+            <p className="overview-scope t3">
+              Data for{' '}
+              {aerodromes.map((feature, index) => {
+                const code = feature.properties.naturalKey;
+                const name = aerodromeName(feature);
+                const separator =
+                  index === aerodromes.length - 1
+                    ? ''
+                    : index === aerodromes.length - 2
+                      ? ' and '
+                      : ', ';
+                return (
+                  <span key={code}>
+                    {name === null ? null : `${name} `}
+                    <span className="mono">({code})</span>
+                    {separator}
+                  </span>
+                );
+              })}
+            </p>
+          )}
         </header>
 
         <div className="overview-counts" aria-label="Feature counts">

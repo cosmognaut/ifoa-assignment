@@ -2,7 +2,7 @@ import * as maplibregl from 'maplibre-gl';
 import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
 import type { ErrorEvent, GeoJSONSource, MapMouseEvent } from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type { FeatureType, FeatureTypeCount, GeoJsonFeature } from '../types';
+import type { FeatureType, FeatureTypeCount, GeoJsonFeature, PointCoordinates } from '../types';
 import { LayerPanel } from './LayerPanel';
 
 const STYLE_BASE = 'https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json';
@@ -151,6 +151,36 @@ const FEATURE_LAYERS: MapLayer[] = [
   }
 ];
 
+function computeBounds(
+  collection: { features: MapFeature[] }
+): [[number, number], [number, number]] | null {
+  let minLon = Number.POSITIVE_INFINITY;
+  let minLat = Number.POSITIVE_INFINITY;
+  let maxLon = Number.NEGATIVE_INFINITY;
+  let maxLat = Number.NEGATIVE_INFINITY;
+
+  const add = ([lon, lat]: PointCoordinates): void => {
+    if (lon < minLon) minLon = lon;
+    if (lat < minLat) minLat = lat;
+    if (lon > maxLon) maxLon = lon;
+    if (lat > maxLat) maxLat = lat;
+  };
+
+  for (const feature of collection.features) {
+    if (feature.geometry.type === 'Point') {
+      add(feature.geometry.coordinates);
+    } else {
+      for (const coordinate of feature.geometry.coordinates) add(coordinate);
+    }
+  }
+
+  if (!Number.isFinite(minLon) || !Number.isFinite(minLat)) return null;
+  return [
+    [minLon, minLat],
+    [maxLon, maxLat]
+  ];
+}
+
 function toMapFeature(feature: GeoJsonFeature): MapFeature {
   if (feature.geometry === null) {
     throw new Error(
@@ -279,6 +309,10 @@ export function MapView({
 
     mapRef.current = map;
 
+    if (import.meta.env.DEV) {
+      (window as Window & { __aeroMap?: maplibregl.Map }).__aeroMap = map;
+    }
+
     map.addControl(
       new maplibregl.AttributionControl({
         compact: true,
@@ -293,15 +327,28 @@ export function MapView({
 
     const handleLoad = () => {
       try {
+        const collection = buildFeatureCollection(drawableRef.current);
         map.addSource(SOURCE_ID, {
           type: 'geojson',
-          data: buildFeatureCollection(drawableRef.current)
+          data: collection
         });
         for (const layer of FEATURE_LAYERS) {
           map.addLayer(layer);
         }
         setTypeVisibility(map, activeRef.current);
         setSelectionFilter(map, selectedKeyRef.current);
+
+        // Fit to the data rather than a fixed zoom: MapLibre's 512px tiles mean a
+        // hardcoded zoom 8 clips southern and eastern Belgium entirely.
+        const bounds = computeBounds(collection);
+        if (bounds !== null) {
+          map.fitBounds(bounds, {
+            padding: { top: 48, bottom: 48, left: 48, right: 48 },
+            duration: 0,
+            maxZoom: 11
+          });
+        }
+
         setMapReady(true);
       } catch (error) {
         console.error('Failed to add feature layers', error);
@@ -345,6 +392,9 @@ export function MapView({
 
     return () => {
       observer.disconnect();
+      if (import.meta.env.DEV) {
+        delete (window as Window & { __aeroMap?: maplibregl.Map }).__aeroMap;
+      }
       map.off('load', handleLoad);
       map.off('error', handleError);
       map.off('click', handleClick);

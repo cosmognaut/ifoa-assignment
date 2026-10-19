@@ -4,7 +4,6 @@ import type { Publication } from '../types';
 const VIEWS: { id: View; label: string }[] = [
   { id: 'overview', label: 'Overview' },
   { id: 'map', label: 'Map' },
-  { id: 'airport', label: 'Airport' },
   { id: 'register', label: 'Register' }
 ];
 

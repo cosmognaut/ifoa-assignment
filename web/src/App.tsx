@@ -1,11 +1,16 @@
-import { useCallback, useMemo, useState } from 'react';
+import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
 import { Inspector } from './components/Inspector';
-import { MapView } from './components/MapView';
 import { OverviewView } from './components/OverviewView';
 import { REGISTER_ALL, RegisterView } from './components/RegisterView';
 import { TopBar } from './components/TopBar';
 import { useFeatures } from './hooks/useFeatures';
 import type { GeoJsonFeature } from './types';
+
+// MapLibre is ~250 kB gzipped and only the Map view needs it, so it is loaded on
+// demand. Overview and Register are the pages a reviewer lands on.
+const MapView = lazy(() =>
+  import('./components/MapView').then((module) => ({ default: module.MapView }))
+);
 
 export type View = 'overview' | 'map' | 'airport' | 'register';
 
@@ -13,12 +18,16 @@ interface AirportViewProps {
   aerodromes: GeoJsonFeature[];
   selectedKey: string | null;
   onSelect: (naturalKey: string) => void;
+  onBack: () => void;
 }
 
-function AirportView({ aerodromes, selectedKey, onSelect }: AirportViewProps) {
+function AirportView({ aerodromes, selectedKey, onSelect, onBack }: AirportViewProps) {
   return (
     <section className="airport" aria-label="Airport view">
       <div className="airport-rail">
+        <button type="button" className="airport-back t1" onClick={onBack}>
+          ← Overview
+        </button>
         <div className="airport-rail-head t1">AERODROMES</div>
         {aerodromes.map((feature) => {
           const key = feature.properties.naturalKey;
@@ -142,14 +151,16 @@ export function App() {
           ) : null}
 
           {status === 'ready' && view === 'map' ? (
-            <MapView
-              types={types}
-              features={features}
-              drawable={drawable}
-              selectedKey={selectedKey}
-              onSelect={handleSelect}
-              onShowRegister={handleShowRegister}
-            />
+            <Suspense fallback={<div className="map-loading t3">Loading map…</div>}>
+              <MapView
+                types={types}
+                features={features}
+                drawable={drawable}
+                selectedKey={selectedKey}
+                onSelect={handleSelect}
+                onShowRegister={handleShowRegister}
+              />
+            </Suspense>
           ) : null}
 
           {status === 'ready' && view === 'airport' ? (
@@ -157,6 +168,7 @@ export function App() {
               aerodromes={aerodromes}
               selectedKey={selectedKey}
               onSelect={handleSelect}
+              onBack={() => setView('overview')}
             />
           ) : null}
 
