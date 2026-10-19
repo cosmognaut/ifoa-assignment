@@ -21,6 +21,39 @@ function aerodromeElevation(feature: GeoJsonFeature): string | null {
   return `${String(field.value)}${unit}`;
 }
 
+const METHOD_STEPS = [
+  {
+    step: '01',
+    title: 'Discover',
+    description:
+      "The publisher's portal is probed for previous, current and preview editions. A cycle is identified by its AIRAC effective date, not by when it was downloaded."
+  },
+  {
+    step: '02',
+    title: 'Acquire',
+    description:
+      'Documents are fetched byte for byte at one request per second and registered in a SHA-256 manifest, so parsing can be replayed against the exact bytes without the network.'
+  },
+  {
+    step: '03',
+    title: 'Parse',
+    description:
+      'Declarative table locators map AIP cells to typed fields. Every value keeps its section, effective date, source URL and the exact raw text it came from.'
+  },
+  {
+    step: '04',
+    title: 'Validate',
+    description:
+      'Coordinate bounds, declared-distance physics and disappearance thresholds gate promotion. A cycle that fails is quarantined rather than published.'
+  },
+  {
+    step: '05',
+    title: 'Compare',
+    description:
+      'Consecutive cycles are diffed by natural key and content hash into NEW, MODIFIED and DELETED, so an amendment arrives as a reviewable change record rather than a replacement.'
+  }
+];
+
 export interface OverviewViewProps {
   publication: Publication | null;
   types: FeatureTypeCount[];
@@ -104,6 +137,21 @@ export function OverviewView({
             })}
           </div>
         </section>
+
+        <section className="overview-section" aria-label="Methodology">
+          <h2 className="overview-section-head t1">Methodology</h2>
+          <ol className="overview-method">
+            {METHOD_STEPS.map((item) => (
+              <li className="overview-method-row" key={item.step}>
+                <span className="overview-method-step t3 mono">{item.step}</span>
+                <span className="overview-method-title t3">{item.title}</span>
+                <span className="overview-method-desc t3">{item.description}</span>
+              </li>
+            ))}
+          </ol>
+        </section>
+
+        <footer className="overview-signature t1">a cosmognaut production</footer>
       </div>
     </section>
   );

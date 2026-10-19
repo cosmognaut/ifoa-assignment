@@ -106,11 +106,13 @@ export function LayerPanel({
             className="layer-row layer-row-unmapped"
             onClick={() => onShowRegister(type.featureType)}
           >
-            <span className="warn-badge t1">no geometry</span>
-            <span className="layer-label t2">{type.featureType}</span>
-            <span className="layer-count t2 mono">
-              {unmappedCounts.get(type.featureType) ?? 0}
+            <span className="layer-unmapped-head">
+              <span className="layer-label t3">{type.featureType}</span>
+              <span className="layer-count t3 mono">
+                {unmappedCounts.get(type.featureType) ?? 0}
+              </span>
             </span>
+            <span className="layer-unmapped-meta">NO GEOMETRY</span>
           </button>
         ))}
       </div>
