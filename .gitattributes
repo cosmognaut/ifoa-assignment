@@ -1,0 +1,12 @@
+# Cached AIP documents and the exported dataset are data, not source.
+# Without these two lines GitHub's language bar reports the submission as
+# ~95% HTML, because 10 MB of publisher HTML outweighs 115 KB of TypeScript.
+data/** linguist-vendored
+
+# Vendored binary webfonts.
+web/public/fonts/** linguist-vendored
+
+# Third-party lockfiles.
+uv.lock linguist-vendored
+api/package-lock.json linguist-vendored
+web/package-lock.json linguist-vendored
