@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import type { ReactNode } from 'react';
 import type { FeatureType, Fields, GeoJsonFeature } from '../types';
 import { renderValue } from './FieldRow';
 
@@ -12,13 +13,71 @@ export interface RegisterViewProps {
   onSelect: (key: string) => void;
 }
 
-function fieldValue(fields: Fields, name: string): unknown {
-  return fields[name]?.value;
-}
-
 function sectionOf(fields: Fields): string {
   const first = Object.values(fields)[0];
   return first === undefined ? '—' : first.section;
+}
+
+const SUMMARY_CHARS = 80;
+
+/** Plain text for a stored value, without JSX — used where a summary needs a string. */
+function textOf(value: unknown): string {
+  if (value === null || value === undefined) return '';
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (Array.isArray(value)) return value.map(textOf).filter((part) => part !== '').join(', ');
+  if (typeof value === 'object') {
+    const record = value as Record<string, unknown>;
+    const parts = [record.value, record.unit, record.reference]
+      .filter((part) => part !== null && part !== undefined && part !== '')
+      .map((part) => String(part));
+    if (parts.length > 0) return parts.join(' ');
+    return typeof record.raw === 'string' ? record.raw : '';
+  }
+  return '';
+}
+
+function truncated(text: string): string {
+  return text.length > SUMMARY_CHARS ? `${text.slice(0, SUMMARY_CHARS).trimEnd()}…` : text;
+}
+
+/**
+ * One type-aware summary per row. The register now holds every feature without
+ * geometry, so the old LOWER/UPPER/ACTIVITY columns were airspace-shaped and the
+ * operational-info rows read as missing data. Airspace keeps the real limit
+ * renderer (so `UNL` still collapses and 999 never leaks); everything else gets a
+ * summary derived from its own fields rather than a hardcoded per-key table.
+ */
+function summaryOf(feature: GeoJsonFeature): ReactNode {
+  const { featureType, fields } = feature.properties;
+
+  if (featureType === 'airspace') {
+    if (fields.lowerLimit === undefined && fields.upperLimit === undefined) return '—';
+    return (
+      <>
+        {renderValue(fields.lowerLimit?.value ?? null)} – {renderValue(fields.upperLimit?.value ?? null)}
+      </>
+    );
+  }
+
+  if (featureType === 'specialUseArea') {
+    const activity = textOf(fields.timeOfActivity?.value);
+    const restriction = truncated(textOf(fields.restrictionType?.value));
+    if (activity !== '' && restriction !== '') return `${activity} · ${restriction}`;
+    return activity || restriction || '—';
+  }
+
+  if (featureType === 'operationalInfo') {
+    const names = Object.keys(fields);
+    const longest = names.reduce((max, name) => Math.max(max, textOf(fields[name]?.value).length), 0);
+    return `${names.length} fields · ${longest} characters`;
+  }
+
+  for (const name of Object.keys(fields)) {
+    const text = textOf(fields[name]?.value);
+    if (text !== '') return truncated(text);
+  }
+  return '—';
 }
 
 export function RegisterView({
@@ -58,9 +117,9 @@ export function RegisterView({
   );
 
   return (
-    <section className="register" aria-label="Airspace register">
+    <section className="register" aria-label="Non-geometric features">
       <header className="register-header">
-        <h2 className="t1">AIRSPACE REGISTER</h2>
+        <h2 className="t1">NON-GEOMETRIC FEATURES</h2>
         <span className="register-count t2 mono">{rows.length} rows</span>
       </header>
 
@@ -88,9 +147,7 @@ export function RegisterView({
         <div className="register-head" role="row">
           <span role="columnheader" className="t1">ID</span>
           <span role="columnheader" className="t1">TYPE</span>
-          <span role="columnheader" className="t1">LOWER</span>
-          <span role="columnheader" className="t1">UPPER</span>
-          <span role="columnheader" className="t1">ACTIVITY</span>
+          <span role="columnheader" className="t1">SUMMARY</span>
           <span role="columnheader" className="t1">SECTION</span>
         </div>
 
@@ -109,14 +166,8 @@ export function RegisterView({
               >
                 <span role="cell" className="register-id t3 mono">{naturalKey}</span>
                 <span role="cell" className="register-type t2">{featureType}</span>
-                <span role="cell" className="register-cell t3 mono">
-                  {renderValue(fieldValue(fields, 'lowerLimit'))}
-                </span>
-                <span role="cell" className="register-cell t3 mono">
-                  {renderValue(fieldValue(fields, 'upperLimit'))}
-                </span>
-                <span role="cell" className="register-cell t3 mono">
-                  {renderValue(fieldValue(fields, 'timeOfActivity'))}
+                <span role="cell" className="register-summary t3">
+                  {summaryOf(feature)}
                 </span>
                 <span role="cell" className="register-section t2 mono">{sectionOf(fields)}</span>
               </button>

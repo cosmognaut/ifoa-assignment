@@ -7,7 +7,8 @@ const FEATURE_COLOUR_TOKENS: Record<string, string> = {
   waypoint: '--map-waypoint',
   runway: '--map-runway',
   runwayDirection: '--map-runwaydir',
-  route: '--map-route'
+  route: '--map-route',
+  operationalInfo: '--map-operational'
 };
 
 const FALLBACK_TOKEN = '--err-fg';

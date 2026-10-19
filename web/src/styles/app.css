@@ -1041,7 +1041,7 @@ a {
 .register-head,
 .register-row {
   display: grid;
-  grid-template-columns: 1.6fr 1fr 0.8fr 0.8fr 0.8fr 1fr;
+  grid-template-columns: 1.6fr 1fr 2fr 1fr;
   align-items: center;
   gap: 12px;
   padding: 0 20px;
@@ -1110,6 +1110,11 @@ a {
 
 .register-cell {
   color: var(--text-primary);
+}
+
+.register-summary {
+  color: var(--text-secondary);
+  text-transform: none;
 }
 
 .register-section {
