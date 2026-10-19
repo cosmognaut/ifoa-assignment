@@ -66,3 +66,9 @@ export interface ValidationIssue {
   message: string;
   rawSnippet: string;
 }
+
+export interface AirportResponse {
+  aerodrome: GeoJsonFeature | null;
+  runwayDirections: GeoJsonFeature[];
+  runways: GeoJsonFeature[];
+}

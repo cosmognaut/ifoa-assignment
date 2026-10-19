@@ -8,6 +8,7 @@ import type {
   Geometry,
   PointCoordinates,
   Publication,
+  AirportResponse,
   ValidationIssue
 } from './types';
 
@@ -193,4 +194,21 @@ export function getIssues(): Promise<ValidationIssue[]> {
     (value: unknown): value is ValidationIssue[] =>
       Array.isArray(value) && value.every(isValidationIssue)
   );
+}
+
+function isAirportResponse(value: unknown): value is AirportResponse {
+  if (!isRecord(value)) return false;
+  const { aerodrome, runwayDirections, runways } = value;
+  const aerodromeOk = aerodrome === null || isFeature(aerodrome);
+  return (
+    aerodromeOk &&
+    Array.isArray(runwayDirections) &&
+    runwayDirections.every(isFeature) &&
+    Array.isArray(runways) &&
+    runways.every(isFeature)
+  );
+}
+
+export function getAirport(icao: string): Promise<AirportResponse> {
+  return fetchJson(`${API_ROOT}/airports/${encodeURIComponent(icao)}`, isAirportResponse);
 }

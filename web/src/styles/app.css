@@ -1155,10 +1155,9 @@ a {
 
 .airport-panel {
   flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 20px;
+  min-width: 0;
+  overflow-y: auto;
+  padding: 32px;
 }
 
 .airport-placeholder {
@@ -1225,4 +1224,159 @@ a {
   height: 100%;
   background: var(--bg);
   color: var(--text-muted);
+}
+
+/* ---- airport operational summary ---- */
+
+.airport-head {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 24px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.airport-icao {
+  color: var(--text-primary);
+  letter-spacing: -0.01em;
+}
+
+.airport-name {
+  color: var(--text-secondary);
+}
+
+.airport-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 20px;
+  margin-top: 4px;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.airport-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 24px;
+}
+
+.airport-card {
+  padding: 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.airport-card-wide {
+  grid-column: 1 / -1;
+}
+
+.airport-card-title {
+  margin-bottom: 12px;
+  color: var(--text-muted);
+}
+
+.airport-card-note {
+  margin-top: 12px;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.airport-error {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  align-items: flex-start;
+  color: var(--text-secondary);
+}
+
+.summary-row {
+  display: grid;
+  grid-template-columns: 168px minmax(0, 1fr);
+  gap: 16px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.summary-row:last-child {
+  border-bottom: none;
+}
+
+.summary-label {
+  color: var(--text-secondary);
+}
+
+.summary-value-line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.summary-value {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.summary-unit {
+  color: var(--text-muted);
+}
+
+.summary-meta {
+  flex-basis: 100%;
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+.summary-columns {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 0 32px;
+}
+
+.runway-table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.runway-table th {
+  padding: 0 8px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-muted);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.runway-row {
+  cursor: pointer;
+}
+
+.runway-row:hover {
+  background: var(--surface-2);
+}
+
+.runway-row:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.runway-cell {
+  padding: 10px 8px;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  white-space: nowrap;
+}
+
+.runway-cell-id {
+  color: var(--text-primary);
+}
+
+.runway-remarks {
+  margin-top: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  color: var(--text-secondary);
+  list-style: none;
 }

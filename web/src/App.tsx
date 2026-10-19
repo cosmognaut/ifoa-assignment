@@ -1,10 +1,10 @@
 import { Suspense, lazy, useCallback, useMemo, useState } from 'react';
+import { AirportView } from './components/AirportView';
 import { Inspector } from './components/Inspector';
 import { OverviewView } from './components/OverviewView';
 import { REGISTER_ALL, RegisterView } from './components/RegisterView';
 import { TopBar } from './components/TopBar';
 import { useFeatures } from './hooks/useFeatures';
-import type { GeoJsonFeature } from './types';
 
 // MapLibre is ~250 kB gzipped and only the Map view needs it, so it is loaded on
 // demand. Overview and Register are the pages a reviewer lands on.
@@ -13,46 +13,6 @@ const MapView = lazy(() =>
 );
 
 export type View = 'overview' | 'map' | 'airport' | 'register';
-
-interface AirportViewProps {
-  aerodromes: GeoJsonFeature[];
-  selectedKey: string | null;
-  onSelect: (naturalKey: string) => void;
-  onBack: () => void;
-}
-
-function AirportView({ aerodromes, selectedKey, onSelect, onBack }: AirportViewProps) {
-  return (
-    <section className="airport" aria-label="Airport view">
-      <div className="airport-rail">
-        <button type="button" className="airport-back t1" onClick={onBack}>
-          ← Overview
-        </button>
-        <div className="airport-rail-head t1">AERODROMES</div>
-        {aerodromes.map((feature) => {
-          const key = feature.properties.naturalKey;
-          const selected = key === selectedKey;
-          return (
-            <button
-              type="button"
-              key={key}
-              className={`airport-rail-row t3 mono${selected ? ' is-selected' : ''}`}
-              aria-pressed={selected}
-              onClick={() => onSelect(key)}
-            >
-              {key}
-            </button>
-          );
-        })}
-      </div>
-      <div className="airport-panel">
-        <p className="airport-placeholder t3">
-          Airport operational summary — implemented in part 2.
-        </p>
-      </div>
-    </section>
-  );
-}
 
 interface ContentStateProps {
   title: string;
@@ -174,6 +134,7 @@ export function App() {
               selectedKey={selectedKey}
               onSelect={handleSelect}
               onBack={() => setView('overview')}
+              publication={publication}
             />
           ) : null}
 
