@@ -6,3 +6,4 @@ database:
     publications: "publications"
     features: "features"
     validation_issues: "validationIssues"
+    changes: "changes"

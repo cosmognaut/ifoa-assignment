@@ -31,6 +31,7 @@ class ValidationEngine:
         # 3. Format Constraints from Config
         self.icao_regex = re.compile(self.cfg["icao_format"])
         self.rwy_regex = re.compile(self.cfg["runway_designator_format"])
+        self.wpt_regex = re.compile(self.cfg["waypoint_format"])
 
         # 4. Declared Distance Rule Selection Flags
         self.dist_cfg = self.cfg["declared_distances"]
@@ -52,16 +53,28 @@ class ValidationEngine:
         parts = feature.natural_key.split("/")
         icao_part = parts[0] if parts else ""
 
-        if not self.icao_regex.match(icao_part):
-            issues.append(ValidationIssue(
-                publication_id=publication_id,
-                severity=IssueSeverity.ERROR,
-                rule_id="RULE_ICAO_FORMAT",
-                feature_key=feature.natural_key,
-                section=feature.feature_type.value,
-                message=f"Invalid ICAO code format: '{icao_part}'",
-                raw_snippet=icao_part
-            ))
+        if feature.feature_type in (FeatureType.AERODROME, FeatureType.RUNWAY, FeatureType.RUNWAY_DIRECTION, FeatureType.OPERATIONAL_INFO):
+            if not self.icao_regex.match(icao_part):
+                issues.append(ValidationIssue(
+                    publication_id=publication_id,
+                    severity=IssueSeverity.ERROR,
+                    rule_id="RULE_ICAO_FORMAT",
+                    feature_key=feature.natural_key,
+                    section=feature.feature_type.value,
+                    message=f"Invalid ICAO code format: '{icao_part}'",
+                    raw_snippet=icao_part
+                ))
+        elif feature.feature_type == FeatureType.WAYPOINT:
+            if not self.wpt_regex.match(feature.natural_key):
+                issues.append(ValidationIssue(
+                    publication_id=publication_id,
+                    severity=IssueSeverity.ERROR,
+                    rule_id="RULE_WAYPOINT_FORMAT",
+                    feature_key=feature.natural_key,
+                    section="ENR-4.4",
+                    message=f"Invalid waypoint key format: '{feature.natural_key}'",
+                    raw_snippet=feature.natural_key
+                ))
 
         if feature.feature_type == FeatureType.RUNWAY_DIRECTION:
             desig_part = parts[-1] if len(parts) >= 3 else ""
@@ -186,7 +199,12 @@ class ValidationEngine:
             all_issues.extend(self.validate_feature(feat, publication_id))
         return all_issues
 
-    def evaluate_promotion_gate(self, issues: List[ValidationIssue]) -> Tuple[bool, str]:
+    def evaluate_promotion_gate(
+        self,
+        issues: List[ValidationIssue],
+        disappeared_runways_pct: float = 0.0,
+        disappeared_features_pct: float = 0.0
+    ) -> Tuple[bool, str]:
         """
         Evaluates whether the publication passes the promotion gate based on
         declarative thresholds configured in validation.yaml: promotion_gate.
@@ -198,5 +216,9 @@ class ValidationEngine:
             return False, f"Hard error count ({error_count}) exceeds allowed maximum ({self.max_error_issues})"
         if warning_count > self.max_warning_issues:
             return False, f"Warning count ({warning_count}) exceeds allowed maximum ({self.max_warning_issues})"
+        if disappeared_runways_pct > self.max_disappeared_runways_pct:
+            return False, f"Disappeared runways ({disappeared_runways_pct}%) exceeds allowed threshold ({self.max_disappeared_runways_pct}%)"
+        if disappeared_features_pct > self.max_disappeared_features_pct:
+            return False, f"Disappeared features ({disappeared_features_pct}%) exceeds allowed threshold ({self.max_disappeared_features_pct}%)"
 
         return True, "All promotion gate thresholds satisfied."

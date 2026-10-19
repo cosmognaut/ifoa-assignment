@@ -1,16 +1,30 @@
 """
-This module contains the utility functions for computing content_hash, which is an SHA-256 fingerprint of only the NORMALIZED values and units, strictly excluding metada.
+This module contains the utility functions for computing content_hash, which is an SHA-256 fingerprint of only the NORMALIZED values and units, strictly excluding metadata.
 
-See DECISION_LOG for how I'm tackling normalization here, as it can be finicky.
+See DECISION_LOG for how normalization is implemented and why it is int/float and whitespace invariant.
 """
+import re
 import json
 import hashlib
 from typing import Dict, Any, Optional
 
 def normalize_value(val: Any) -> Any:
-    """Recursively normalizes floats to 6 decimal places and dicts/lists deterministically."""
-    if isinstance(val, float):
-        return round(val, 6)
+    """
+    Recursively normalizes numbers, strings, and structures:
+      - Integers and exact floats (2987 and 2987.0) serialize identically to int.
+      - Fractional floats are rounded to 6 decimal places (~0.11m precision).
+      - Strings have internal whitespace collapsed and ends stripped.
+      - Dictionaries and lists are traversed recursively.
+    """
+    if isinstance(val, bool):
+        return val
+    elif isinstance(val, (int, float)):
+        f = float(val)
+        if f.is_integer():
+            return int(f)
+        return round(f, 6)
+    elif isinstance(val, str):
+        return re.sub(r"\s+", " ", val.strip())
     elif isinstance(val, dict):
         return {k: normalize_value(v) for k, v in sorted(val.items())}
     elif isinstance(val, (list, tuple)):

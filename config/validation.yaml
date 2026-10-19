@@ -20,6 +20,7 @@ validation:
   # format constraints
   icao_format: "^[A-Z]{4}$"
   runway_designator_format: "^(0[1-9]|[12][0-9]|3[0-6])[LCR]?$"
+  waypoint_format: "^WPT/[A-Z0-9]{3,5}$"
 
   # declared distance integrity checks
   declared_distances:

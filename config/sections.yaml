@@ -244,6 +244,20 @@ sections:
     anchor: "ENR-4.4"
     heading_pattern: "ENR 4.4"
     target_type: "waypoint"
+    table_locator:
+      required_headers:
+        - "name-code designator"
+        - "coordinates"
+    fields:
+      designator:
+        header_pattern: "name-code designator"
+        converter: "text"
+      coordinates:
+        header_pattern: "coordinates"
+        converter: "coordinates"
+      atsRoutes:
+        header_pattern: "ats route"
+        converter: "text"
 
   - id: "ENR-5.1"
     name: "Prohibited, Restricted and Danger Areas"

@@ -21,8 +21,11 @@ from pipeline.ingest.discovery import AIPDiscovery
 from pipeline.ingest.manifest import ManifestManager
 from pipeline.models.publication import Publication, PublicationStatus, SourceKind, PublicationStatistics
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
+from pipeline.models.feature import Feature
 from pipeline.parse.runways import RunwayParser
+from pipeline.parse.waypoints import WaypointParser
 from pipeline.validate.rules import ValidationEngine
+from pipeline.diff.engine import DiffEngine, DiffReport
 from pipeline.load.load import MongoLoader
 
 def _cache_dir(args=None) -> Path:
@@ -55,9 +58,7 @@ def _load_publication_meta(cache_dir: Path, cycle_id: str) -> Optional[Dict[str,
         return json.load(f)
 
 def cmd_check_updates(args):
-    """
-    Compares discovered cycles against local/promoted cycles and prints what needs ingesting.
-    """
+    """Compares discovered cycles against local/promoted cycles and prints what needs ingesting."""
     print("[Pipeline] Checking for AIP updates from skeyes...")
     discovery = AIPDiscovery()
     discovered_cycles = discovery.discover_cycles()
@@ -102,34 +103,70 @@ def cmd_ingest_fetch(args):
     """Fetches documents for a cycle and writes manifest.jsonl and publication_meta.json."""
     cycle_id = args.cycle
     cache_dir = _cache_dir(args)
+    from_zip = Path(args.from_zip) if getattr(args, "from_zip", None) else None
+    from_dir = Path(args.from_dir) if getattr(args, "from_dir", None) else None
 
     print(f"[Pipeline] Ingesting cycle: {cycle_id}")
     discovery = AIPDiscovery()
     cycles = discovery.discover_cycles()
     cycle_match = next((c for c in cycles if c["cycle_id"] == cycle_id), None)
     if not cycle_match:
-        print(f"Error: Cycle '{cycle_id}' not discovered from publisher. Available cycles: {[c['cycle_id'] for c in cycles]}")
-        sys.exit(1)
+        # If offline fallback is used, synthesize minimal cycle metadata
+        if from_zip or from_dir:
+            cycle_match = {
+                "cycle_id": cycle_id,
+                "role": "offline",
+                "effective_date": cycle_id[:10],
+                "amendment_id": f"OFFLINE-{cycle_id}",
+                "publication_date": cycle_id[:10],
+                "source_kind": "ZIP" if from_zip else "DIR"
+            }
+        else:
+            print(f"Error: Cycle '{cycle_id}' not discovered from publisher. Available cycles: {[c['cycle_id'] for c in cycles]}")
+            sys.exit(1)
 
     print(f"Discovered cycle metadata: {cycle_match['amendment_id']} effective {cycle_match['effective_date']}")
     _save_publication_meta(cache_dir, cycle_id, cycle_match)
 
-    sections = discovery.discover_sections_for_cycle(cycle_match)
-    print(f"Discovered {len(sections)} target document(s) matching configuration:")
-    for s in sections:
-        sec_name = s.get("name", s.get("section_id", ""))
-        print(f"  • [{s['category']}] {s['section_id']}: {s['document_filename']} ({len(s.get('anchors', []))} anchors) - {sec_name}")
+    sections = discovery.discover_sections_for_cycle(cycle_match) if not (from_zip or from_dir) else []
+    # If offline, generate document list from sections.yaml directly
+    if from_zip or from_dir:
+        sections_cfg = load_sections_config().get("sections", [])
+        airports_cfg = load_airports_config()
+        icaos = [a["icao"] for a in airports_cfg.get("target_airports", [])]
+        seen_files = set()
+        for s in sections_cfg:
+            if s.get("scope") == "per_airport":
+                for icao in icaos:
+                    fname = s["file_template"].format(icao=icao)
+                    if fname not in seen_files:
+                        seen_files.add(fname)
+                        sections.append({"document_filename": fname, "section_id": f"AD-2.{icao}", "url": f"file://{fname}", "category": "AD"})
+            elif s.get("scope") == "global" and s.get("file_pattern"):
+                fname = s["file_pattern"]
+                if fname not in seen_files:
+                    seen_files.add(fname)
+                    sections.append({"document_filename": fname, "section_id": s["id"], "url": f"file://{fname}", "category": s.get("category", "ENR")})
 
-    crawler = PoliteCrawler()
+    print(f"Targeting {len(sections)} document(s):")
+    crawler = PoliteCrawler(cache_dir=cache_dir)
     manifest_items = []
 
-    print("\nFetching documents (with 1 req/s rate limit & byte-for-byte caching)...")
     for s in sections:
-        url = s["url"]
         fname = s["document_filename"]
         sec_id = s["section_id"]
-        print(f"  Fetching: {url}")
-        res = crawler.fetch_url(url, cycle_id, sec_id, fname)
+        url = s.get("url", f"https://ops.skeyes.be/{fname}")
+
+        if from_zip:
+            print(f"  Extracting from ZIP: {fname}")
+            res = crawler.fetch_from_zip(from_zip, cycle_id, sec_id, fname)
+        elif from_dir:
+            print(f"  Copying from DIR: {fname}")
+            res = crawler.fetch_from_dir(from_dir, cycle_id, sec_id, fname)
+        else:
+            print(f"  Fetching: {url}")
+            res = crawler.fetch_url(url, cycle_id, sec_id, fname)
+
         print(f"    -> Status: {res['status']} | Size: {res['bytes_length']} bytes | SHA256: {res['sha256'][:12]}...")
         manifest_items.append(res)
 
@@ -181,8 +218,14 @@ def cmd_ingest_list(args):
         sha_short = i.sha256[:14] + ".." if i.sha256 else "NONE"
         print(f"{i.section_id:<15} {i.status:<12} {i.bytes_length:<10} {sha_short:<16} {p}")
 
-def _parse_airport_runways(cycle_id: str, icao: str, cache_dir: Path):
-    doc_path = cache_dir / cycle_id / f"EB-AD-2.{icao}-en-GB.html"
+def _parse_airport_runways(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    sections_cfg = load_sections_config()
+    ad12_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.12"), None)
+    if not ad12_spec:
+        raise ValueError("Missing AD-2.12 spec in sections.yaml")
+
+    expected_filename = ad12_spec["file_template"].format(icao=icao)
+    doc_path = cache_dir / cycle_id / expected_filename
     if not doc_path.exists():
         raise FileNotFoundError(
             f"Missing cached document at {doc_path}. "
@@ -194,8 +237,8 @@ def _parse_airport_runways(cycle_id: str, icao: str, cache_dir: Path):
 
     manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
     doc_meta = next((item for item in manifest_items if item.section_id == f"AD-2.{icao}"), None)
-    source_url = doc_meta.url if doc_meta else f"https://ops.skeyes.be/html/belgocontrol_static/eaip/eAIP_Main/html/eAIP/EB-AD-2.{icao}-en-GB.html"
-    retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+    if not doc_meta:
+        raise ValueError(f"Document {expected_filename} missing from manifest.jsonl for cycle {cycle_id}")
 
     meta = _load_publication_meta(cache_dir, cycle_id) or {}
     effective_date = meta.get("effective_date", cycle_id[:10])
@@ -205,14 +248,39 @@ def _parse_airport_runways(cycle_id: str, icao: str, cache_dir: Path):
         icao=icao,
         html_content=html,
         document_filename=doc_path.name,
+        source_url=doc_meta.url,
+        retrieved_at=doc_meta.fetched_at
+    )
+
+def _parse_waypoints(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    sections_cfg = load_sections_config()
+    wpt_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "ENR-4.4"), None)
+    if not wpt_spec:
+        return [], []
+
+    wpt_filename = wpt_spec.get("file_pattern", "EB-ENR-4.4-en-GB.html")
+    doc_path = cache_dir / cycle_id / wpt_filename
+    if not doc_path.exists():
+        return [], []
+
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+    doc_meta = next((item for item in manifest_items if item.section_id == "ENR-4.4"), None)
+    source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+    retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    effective_date = meta.get("effective_date", cycle_id[:10])
+
+    parser = WaypointParser(cycle_id=cycle_id, effective_date=effective_date)
+    return parser.parse_waypoints(
+        html_content=doc_path.read_text(encoding="utf-8"),
+        document_filename=doc_path.name,
         source_url=source_url,
         retrieved_at=retrieved_at
     )
 
-def _parse_all_target_airports(cycle_id: str, args=None) -> Tuple[List[Any], List[ValidationIssue]]:
-    """
-    Loops over target airports (either explicit --icao or all airports from airports.yaml).
-    """
+def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[ValidationIssue]]:
+    """Single comprehensive parse pass: parses all configured airports and global waypoints."""
     cache_dir = _cache_dir(args)
     explicit_icao = getattr(args, "icao", None) if args else None
     target_icaos = [explicit_icao] if explicit_icao else _target_icaos(args)
@@ -238,19 +306,26 @@ def _parse_all_target_airports(cycle_id: str, args=None) -> Tuple[List[Any], Lis
                 raw_snippet=f"EB-AD-2.{icao}-en-GB.html"
             ))
 
+    # Parse ENR 4.4 waypoints if not targeting a single airport
+    if not explicit_icao:
+        wpt_feats, wpt_issues = _parse_waypoints(cycle_id, cache_dir)
+        all_features.extend(wpt_feats)
+        all_issues.extend(wpt_issues)
+
     return all_features, all_issues
 
 def cmd_parse(args):
     """Parses raw HTML documents for a cycle into normalized features."""
     cycle_id = args.cycle
-    target_icaos = [args.icao] if getattr(args, "icao", None) else _target_icaos(args)
-    print(f"[Pipeline] Parsing runways for airport(s) {target_icaos} in cycle: {cycle_id}")
+    print(f"[Pipeline] Parsing features for cycle: {cycle_id}")
+    features, issues = _parse_all(cycle_id, args)
 
-    features, issues = _parse_all_target_airports(cycle_id, args)
     print(f"Extracted {len(features)} feature(s) and {len(issues)} parsing issue(s):")
-    for f in features:
+    for f in features[:15]:
         geom_type = f.geometry.type if f.geometry else "None"
-        print(f"  • [{f.feature_type.value:<15}] {f.natural_key:<20} Parent: {str(f.parent_key):<18} Geom: {geom_type:<10} Hash: {f.content_hash[:12]}...")
+        print(f"  • [{f.feature_type.value:<16}] {f.natural_key:<20} Parent: {str(f.parent_key):<18} Geom: {geom_type:<10} Hash: {f.content_hash[:12]}...")
+    if len(features) > 15:
+        print(f"  ... and {len(features) - 15} more features.")
 
     if issues:
         print(f"\nParsing issues found:")
@@ -260,10 +335,9 @@ def cmd_parse(args):
 def cmd_validate(args):
     """Validates parsed features against declarative safety rules."""
     cycle_id = args.cycle
-    target_icaos = [args.icao] if getattr(args, "icao", None) else _target_icaos(args)
-    print(f"[Pipeline] Validating airport(s) {target_icaos} features for cycle: {cycle_id}")
+    print(f"[Pipeline] Validating features for cycle: {cycle_id}")
 
-    features, parse_issues = _parse_all_target_airports(cycle_id, args)
+    features, parse_issues = _parse_all(cycle_id, args)
     engine = ValidationEngine()
     val_issues = engine.validate_features(features, cycle_id)
     all_issues = parse_issues + val_issues
@@ -287,17 +361,58 @@ def cmd_validate(args):
     else:
         print(f"\nPromotion Gate Check: PASSED ({gate_msg})")
 
+def cmd_diff(args):
+    """Compares two cycles by naturalKey + contentHash and reports field-level changes."""
+    from_cycle = args.from_cycle
+    to_cycle = args.to_cycle
+    cache_dir = _cache_dir(args)
+    db_cfg = load_database_config()
+    loader = MongoLoader(uri=getattr(args, "mongo_uri", None) or db_cfg["uri"])
+
+    # Load from MongoDB if available, otherwise parse from cache
+    from_raw = loader.get_features(from_cycle)
+    if from_raw:
+        from_feats = [Feature.model_validate(f) for f in from_raw]
+    else:
+        from_feats, _ = _parse_all(from_cycle, args)
+
+    to_raw = loader.get_features(to_cycle)
+    if to_raw:
+        to_feats = [Feature.model_validate(f) for f in to_raw]
+    else:
+        to_feats, _ = _parse_all(to_cycle, args)
+
+    print(f"[Pipeline] Diffing Cycle '{from_cycle}' ({len(from_feats)} features) -> '{to_cycle}' ({len(to_feats)} features)...")
+    report = DiffEngine.compare_features(from_cycle, to_cycle, from_feats, to_feats)
+
+    print(f"\nDiff Summary:")
+    print(f"  NEW:       {report.counts['new']}")
+    print(f"  MODIFIED:  {report.counts['modified']}")
+    print(f"  DELETED:   {report.counts['deleted']}")
+    print(f"  UNCHANGED: {report.counts['unchanged']}")
+    print(f"  Disappeared Runways:  {report.disappeared_runways_pct}%")
+    print(f"  Disappeared Features: {report.disappeared_features_pct}%")
+
+    if report.changes:
+        print("\nDetailed Changes:")
+        for c in report.changes[:20]:
+            print(f"  [{c.status.value:<8}] {c.feature_type.value:<16} {c.feature_key}")
+            for fc in c.field_changes:
+                print(f"    • {fc.field}: {fc.previous} -> {fc.new}")
+
+    # Persist change rows to MongoDB
+    loader.save_changes(from_cycle, to_cycle, report.changes)
+
 def cmd_load(args):
-    """Saves publication, features, and validation issues to MongoDB."""
+    """Loads features and issues into MongoDB, evaluating promotion gate and saving rejection on failure."""
     cycle_id = args.cycle
     promote = getattr(args, "promote", False)
     cache_dir = _cache_dir(args)
-
     db_cfg = load_database_config()
     mongo_uri = getattr(args, "mongo_uri", None) or db_cfg["uri"]
 
-    print(f"[Pipeline] Loading cycle {cycle_id} into MongoDB ({mongo_uri})...")
-    features, parse_issues = _parse_all_target_airports(cycle_id, args)
+    print(f"[Pipeline] Processing cycle {cycle_id} for MongoDB ({mongo_uri})...")
+    features, parse_issues = _parse_all(cycle_id, args)
 
     engine = ValidationEngine()
     val_issues = engine.validate_features(features, cycle_id)
@@ -305,6 +420,27 @@ def cmd_load(args):
 
     errors = [i for i in all_issues if i.severity == IssueSeverity.ERROR]
     warnings = [i for i in all_issues if i.severity == IssueSeverity.WARNING]
+
+    # Diff against previously promoted cycle to get disappearance percentages
+    loader = MongoLoader(uri=mongo_uri)
+    prev_pub = loader.get_promoted_publication()
+    disappeared_rwy_pct = 0.0
+    disappeared_feat_pct = 0.0
+    if prev_pub:
+        prev_cid = prev_pub.get("cycleId") or prev_pub.get("cycle_id")
+        if prev_cid != cycle_id:
+            prev_raw = loader.get_features(prev_cid)
+            prev_feats = [Feature.model_validate(f) for f in prev_raw]
+            diff_report = DiffEngine.compare_features(prev_cid, cycle_id, prev_feats, features)
+            disappeared_rwy_pct = diff_report.disappeared_runways_pct
+            disappeared_feat_pct = diff_report.disappeared_features_pct
+            loader.save_changes(prev_cid, cycle_id, diff_report.changes)
+
+    passed, gate_msg = engine.evaluate_promotion_gate(all_issues, disappeared_rwy_pct, disappeared_feat_pct)
+
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    amdt_id = meta.get("amendment_id", f"AMDT-{cycle_id}")
+    eff_date = meta.get("effective_date", cycle_id[:10])
 
     manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
     manifest_path = Path(ManifestManager.get_manifest_path(str(cache_dir), cycle_id))
@@ -314,19 +450,14 @@ def cmd_load(args):
         with open(manifest_path, "rb") as mf:
             manifest_sha = hashlib.sha256(mf.read()).hexdigest()
 
-    meta = _load_publication_meta(cache_dir, cycle_id) or {}
-    amdt_id = meta.get("amendment_id", f"AMDT-{cycle_id}")
-    eff_date = meta.get("effective_date", cycle_id[:10])
-
-    passed, gate_msg = engine.evaluate_promotion_gate(all_issues)
     status = PublicationStatus.STAGED
     if promote:
         if not passed:
-            print(f"[Pipeline] Promotion gate FAILED: {gate_msg}. Marking status as 'rejected'.")
+            print(f"[Pipeline] Promotion gate FAILED: {gate_msg}. Setting status to 'rejected'.")
             status = PublicationStatus.REJECTED
         else:
             status = PublicationStatus.PROMOTED
-            print(f"[Pipeline] Promotion gate PASSED: {gate_msg}. Promoting cycle {cycle_id} to 'promoted'.")
+            print(f"[Pipeline] Promotion gate PASSED: {gate_msg}. Setting status to 'promoted'.")
 
     pub = Publication(
         cycle_id=cycle_id,
@@ -345,23 +476,29 @@ def cmd_load(args):
         )
     )
 
-    loader = MongoLoader(uri=mongo_uri)
+    # PERSIST TO DATABASE BEFORE ANY EXIT (Fixes S1: quarantine path is always persisted)
     loader.save_publication(pub)
     loader.save_features(features)
     loader.save_validation_issues(cycle_id, all_issues)
 
-    print(f"Successfully loaded into MongoDB:")
-    print(f"  • Publication '{pub.cycle_id}' (amendment: {pub.amendment_id}, status: {pub.status.value})")
+    if promote and status == PublicationStatus.PROMOTED:
+        loader.promote_publication(cycle_id, eff_date)
+
+    print(f"Successfully persisted to MongoDB:")
+    print(f"  • Publication '{pub.cycle_id}' (status: {pub.status.value})")
     print(f"  • {len(features)} features")
     print(f"  • {len(all_issues)} validation issues")
 
+    if promote and not passed:
+        sys.exit(1)
+
 def cmd_run(args):
-    """Executes full pipeline: parse -> validate -> load -> promote."""
+    """Single-pass end-to-end runner: verifies cache, parses once, validates, diffs, and promotes or quarantines."""
     cycle_id = args.cycle
     cache_dir = _cache_dir(args)
 
     print(f"============================================================")
-    print(f"  RUNNING END-TO-END PIPELINE FOR CYCLE: {cycle_id}")
+    print(f"  RUNNING PIPELINE FOR CYCLE: {cycle_id}")
     print(f"============================================================\n")
 
     ok, errors = ManifestManager.verify_manifest(str(cache_dir), cycle_id)
@@ -371,11 +508,8 @@ def cmd_run(args):
     else:
         print(f"[Step 1] Raw cache verified: all files match manifest SHA-256.")
 
-    cmd_validate(args)
-
     args.promote = True
     cmd_load(args)
-
     print(f"\nPipeline run completed successfully for cycle '{cycle_id}'.")
 
 def main():
@@ -423,6 +557,13 @@ def main():
     p_val.add_argument("--cycle", required=True, help="Cycle ID")
     p_val.add_argument("--icao", help="Specific airport ICAO (default: all target airports)")
     p_val.set_defaults(func=cmd_validate)
+
+    # diff
+    p_diff = subparsers.add_parser("diff", help="Diff two cycles and emit field-level changes")
+    p_diff.add_argument("--from", dest="from_cycle", required=True, help="Source cycle ID")
+    p_diff.add_argument("--to", dest="to_cycle", required=True, help="Target cycle ID")
+    p_diff.add_argument("--mongo-uri", help="MongoDB connection URI")
+    p_diff.set_defaults(func=cmd_diff)
 
     # load
     p_load = subparsers.add_parser("load", help="Load features into MongoDB")
