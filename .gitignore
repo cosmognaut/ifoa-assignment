@@ -12,3 +12,7 @@ wheels/
 # Node API dependencies
 node_modules/
 api/node_modules/
+
+# Web app build artifacts
+web/node_modules/
+web/dist/
