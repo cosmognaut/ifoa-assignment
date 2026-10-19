@@ -1329,10 +1329,38 @@ a {
   text-transform: none;
 }
 
-.summary-columns {
+.summary-inline {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 0 32px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 24px;
+  align-items: start;
+}
+
+.summary-inline-item {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.summary-inline-label {
+  color: var(--text-muted);
+}
+
+.summary-inline-value {
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.summary-inline-meta {
+  color: var(--text-muted);
+  text-transform: none;
+}
+
+@media (max-width: 1099px) {
+  .summary-inline {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }
 
 .runway-table {

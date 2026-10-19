@@ -83,6 +83,19 @@ function SummaryRow({ label, field }: { label: string; field: Field | undefined 
   );
 }
 
+function InlineField({ label, field }: { label: string; field: Field | undefined }) {
+  if (field === undefined) return null;
+  return (
+    <div className="summary-inline-item">
+      <span className="summary-inline-label t1">{label}</span>
+      <span className="summary-inline-value t3">{renderValue(field.value)}</span>
+      <span className="summary-inline-meta t1 mono">
+        {field.section} · eff {field.effective_date}
+      </span>
+    </div>
+  );
+}
+
 function NumberCell({ field }: { field: Field | undefined }) {
   if (field === undefined || field.value === null) return <td className="runway-cell">—</td>;
   return (
@@ -264,19 +277,22 @@ export function AirportView({
                 ))}
               </section>
 
-              <section className="airport-card" aria-label="Rescue and fire fighting">
-                <h3 className="airport-card-title t1">Rescue &amp; fire fighting</h3>
-                <SummaryRow label="Category" field={fieldOf(aerodrome, 'rffsCategory')} />
-                <SummaryRow label="Equipment" field={fieldOf(aerodrome, 'rffsEquipment')} />
-                <SummaryRow label="Disabled aircraft" field={fieldOf(aerodrome, 'disabledAircraftRemoval')} />
+              <section className="airport-card" aria-label="Contacts">
+                <h3 className="airport-card-title t1">Operator &amp; contacts</h3>
+                {CONTACT_FIELDS.map((entry) => (
+                  <SummaryRow key={entry.key} label={entry.label} field={fieldOf(aerodrome, entry.key)} />
+                ))}
               </section>
 
-              <section className="airport-card airport-card-wide" aria-label="Contacts">
-                <h3 className="airport-card-title t1">Operator &amp; contacts</h3>
-                <div className="summary-columns">
-                  {CONTACT_FIELDS.map((entry) => (
-                    <SummaryRow key={entry.key} label={entry.label} field={fieldOf(aerodrome, entry.key)} />
-                  ))}
+              <section className="airport-card airport-card-wide" aria-label="Rescue and fire fighting">
+                <h3 className="airport-card-title t1">Rescue &amp; fire fighting</h3>
+                <div className="summary-inline">
+                  <InlineField label="Category" field={fieldOf(aerodrome, 'rffsCategory')} />
+                  <InlineField label="Equipment" field={fieldOf(aerodrome, 'rffsEquipment')} />
+                  <InlineField
+                    label="Disabled aircraft"
+                    field={fieldOf(aerodrome, 'disabledAircraftRemoval')}
+                  />
                 </div>
               </section>
             </div>
