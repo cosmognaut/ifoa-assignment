@@ -83,11 +83,39 @@ sections:
         header_pattern: "arp coordinates"
         converter: "coordinates"
       elevation:
-        header_pattern: "elevation"
+        header_pattern: "elevation / reference"
         converter: "elevation"
         unit: "FT"
+      geoidUndulation:
+        header_pattern: "geoid undulation"
+        converter: "elevation"
+        unit: "FT"
+      referenceTemperature:
+        header_pattern: "reference temperature"
+        converter: "text"
       magneticVariation:
         header_pattern: "magnetic variation"
+        converter: "text"
+      operatorName:
+        header_pattern: "name of ad operator"
+        converter: "text"
+      operatorAddress:
+        header_pattern: "address"
+        converter: "text"
+      operatorTel:
+        header_pattern: "tel"
+        converter: "text"
+      operatorFax:
+        header_pattern: "fax"
+        converter: "text"
+      operatorEmail:
+        header_pattern: "email"
+        converter: "text"
+      operatorAfs:
+        header_pattern: "afs"
+        converter: "text"
+      trafficPermitted:
+        header_pattern: "types of traffic permitted"
         converter: "text"
 
   - id: "AD-2.3"
@@ -104,10 +132,34 @@ sections:
         header_pattern: "ad operator"
         converter: "text"
       hoursCustoms:
-        header_pattern: "customs"
+        header_pattern: "customs and immigration"
+        converter: "text"
+      hoursHealth:
+        header_pattern: "health"
+        converter: "text"
+      hoursAisBriefing:
+        header_pattern: "ais briefing office"
+        converter: "text"
+      hoursAro:
+        header_pattern: "ats reporting office"
+        converter: "text"
+      hoursMet:
+        header_pattern: "met briefing"
         converter: "text"
       hoursATS:
         header_pattern: "ats"
+        converter: "text"
+      hoursFuelling:
+        header_pattern: "fuelling"
+        converter: "text"
+      hoursHandling:
+        header_pattern: "handling"
+        converter: "text"
+      hoursSecurity:
+        header_pattern: "security"
+        converter: "text"
+      hoursDeicing:
+        header_pattern: "de-icing"
         converter: "text"
 
   - id: "AD-2.6"
@@ -125,6 +177,12 @@ sections:
         converter: "text"
       rffsEquipment:
         header_pattern: "rescue equipment"
+        converter: "text"
+      disabledAircraftRemoval:
+        header_pattern: "capability for removal"
+        converter: "text"
+      remarks:
+        header_pattern: "remarks"
         converter: "text"
 
   - id: "AD-2.12"

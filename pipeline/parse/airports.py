@@ -48,7 +48,6 @@ class AirportParser:
         return None
 
     def _extract_key_values(self, container: Any) -> List[Tuple[str, str]]:
-        """Extracts (label, value) pairs from standard 2-column or 3-column [num, label, value] tables."""
         pairs = []
         if not container:
             return pairs
@@ -57,9 +56,18 @@ class AirportParser:
             if len(cells) == 2:
                 pairs.append((cells[0].lower(), cells[1]))
             elif len(cells) >= 3:
-                # If first cell is a number/item e.g. '1', label is cells[1], value is cells[2]
                 pairs.append((cells[1].lower(), cells[2]))
         return pairs
+
+    def _match_field(self, label: str, pat: str) -> bool:
+        """Exact match for 'ats' to prevent substring collision with 'ats reporting office', else substring."""
+        if not pat:
+            return False
+        clean_label = label.strip()
+        clean_pat = pat.strip()
+        if clean_pat == "ats":
+            return clean_label == "ats"
+        return clean_pat in clean_label
 
     def parse_airport_summary(
         self,
@@ -82,22 +90,57 @@ class AirportParser:
             kv_22 = self._extract_key_values(div_22)
             fields_22 = self.spec_22.get("fields", {})
 
-            for f_name, f_spec in fields_22.items():
-                pat = f_spec.get("header_pattern", "").lower()
-                converter_name = f_spec.get("converter", "text")
-                converter_fn = CONVERTER_REGISTRY.get(converter_name, lambda x: (x, None))
+            for label, raw_val in kv_22:
+                matched = [(fn, fs) for fn, fs in fields_22.items() if self._match_field(label, fs.get("header_pattern", "").lower())]
+                matched_names = {m[0] for m in matched}
 
-                for label, raw_val in kv_22:
-                    if pat and pat in label:
-                        parsed_val, default_unit = converter_fn(raw_val)
-                        unit = f_spec.get("unit", default_unit)
+                # Allow ICAO combined compound row: Elevation / Reference temperature
+                if len(matched) > 1 and matched_names != {"elevation", "referenceTemperature"}:
+                    issues.append(ValidationIssue(
+                        publication_id=self.cycle_id,
+                        severity=IssueSeverity.WARNING,
+                        rule_id="RULE_AMBIGUOUS_FIELD_PATTERN",
+                        feature_key=icao,
+                        section=sec_22_label,
+                        message=f"Ambiguous pattern: label '{label}' matched {[m[0] for m in matched]}",
+                        raw_snippet=label
+                    ))
+                else:
+                    for f_name, f_spec in matched:
+                        if f_name not in fields:
+                            converter_name = f_spec.get("converter", "text")
+                            converter_fn = CONVERTER_REGISTRY.get(converter_name, lambda x: (x, None))
+                            parsed_val, default_unit = converter_fn(raw_val)
+                            unit = f_spec.get("unit", default_unit)
 
-                        if converter_name == "coordinates":
-                            if parsed_val:
-                                arp_coords = parsed_val
+                            if converter_name == "coordinates":
+                                if parsed_val:
+                                    arp_coords = parsed_val
+                                    fields[f_name] = FeatureField(
+                                        value=list(parsed_val),
+                                        unit=None,
+                                        source=self.publisher_name,
+                                        section=sec_22_label,
+                                        effective_date=self.effective_date,
+                                        retrieved_at=retrieved_at,
+                                        source_url=source_url,
+                                        parser_version=PARSER_VERSION,
+                                        raw_text=raw_val
+                                    )
+                                else:
+                                    issues.append(ValidationIssue(
+                                        publication_id=self.cycle_id,
+                                        severity=IssueSeverity.ERROR,
+                                        rule_id="RULE_COORDINATE_FORMAT",
+                                        feature_key=icao,
+                                        section=sec_22_label,
+                                        message=f"Failed to parse ARP coordinates '{raw_val}' for airport {icao}",
+                                        raw_snippet=raw_val
+                                    ))
+                            else:
                                 fields[f_name] = FeatureField(
-                                    value=list(parsed_val),
-                                    unit=None,
+                                    value=parsed_val,
+                                    unit=unit,
                                     source=self.publisher_name,
                                     section=sec_22_label,
                                     effective_date=self.effective_date,
@@ -106,29 +149,6 @@ class AirportParser:
                                     parser_version=PARSER_VERSION,
                                     raw_text=raw_val
                                 )
-                            else:
-                                issues.append(ValidationIssue(
-                                    publication_id=self.cycle_id,
-                                    severity=IssueSeverity.ERROR,
-                                    rule_id="RULE_COORDINATE_FORMAT",
-                                    feature_key=icao,
-                                    section=sec_22_label,
-                                    message=f"Failed to parse ARP coordinates '{raw_val}' for airport {icao}",
-                                    raw_snippet=raw_val
-                                ))
-                        else:
-                            fields[f_name] = FeatureField(
-                                value=parsed_val,
-                                unit=unit,
-                                source=self.publisher_name,
-                                section=sec_22_label,
-                                effective_date=self.effective_date,
-                                retrieved_at=retrieved_at,
-                                source_url=source_url,
-                                parser_version=PARSER_VERSION,
-                                raw_text=raw_val
-                            )
-                        break
 
         # 2. Parse AD 2.3 Operational Hours
         div_23 = self._locate_section_div(soup, icao, self.spec_23)
@@ -137,10 +157,21 @@ class AirportParser:
             kv_23 = self._extract_key_values(div_23)
             fields_23 = self.spec_23.get("fields", {})
 
-            for f_name, f_spec in fields_23.items():
-                pat = f_spec.get("header_pattern", "").lower()
-                for label, raw_val in kv_23:
-                    if pat and pat in label:
+            for label, raw_val in kv_23:
+                matched = [(fn, fs) for fn, fs in fields_23.items() if self._match_field(label, fs.get("header_pattern", "").lower())]
+                if len(matched) > 1:
+                    issues.append(ValidationIssue(
+                        publication_id=self.cycle_id,
+                        severity=IssueSeverity.WARNING,
+                        rule_id="RULE_AMBIGUOUS_FIELD_PATTERN",
+                        feature_key=icao,
+                        section=sec_23_label,
+                        message=f"Ambiguous pattern: label '{label}' matched {[m[0] for m in matched]}",
+                        raw_snippet=label
+                    ))
+                elif len(matched) == 1:
+                    f_name, f_spec = matched[0]
+                    if f_name not in fields:
                         fields[f_name] = FeatureField(
                             value=raw_val,
                             unit=None,
@@ -152,7 +183,6 @@ class AirportParser:
                             parser_version=PARSER_VERSION,
                             raw_text=raw_val
                         )
-                        break
 
         # 3. Parse AD 2.6 Rescue and Fire Fighting Services (RFFS)
         div_26 = self._locate_section_div(soup, icao, self.spec_26)
@@ -161,10 +191,21 @@ class AirportParser:
             kv_26 = self._extract_key_values(div_26)
             fields_26 = self.spec_26.get("fields", {})
 
-            for f_name, f_spec in fields_26.items():
-                pat = f_spec.get("header_pattern", "").lower()
-                for label, raw_val in kv_26:
-                    if pat and pat in label:
+            for label, raw_val in kv_26:
+                matched = [(fn, fs) for fn, fs in fields_26.items() if self._match_field(label, fs.get("header_pattern", "").lower())]
+                if len(matched) > 1:
+                    issues.append(ValidationIssue(
+                        publication_id=self.cycle_id,
+                        severity=IssueSeverity.WARNING,
+                        rule_id="RULE_AMBIGUOUS_FIELD_PATTERN",
+                        feature_key=icao,
+                        section=sec_26_label,
+                        message=f"Ambiguous pattern: label '{label}' matched {[m[0] for m in matched]}",
+                        raw_snippet=label
+                    ))
+                elif len(matched) == 1:
+                    f_name, f_spec = matched[0]
+                    if f_name not in fields:
                         fields[f_name] = FeatureField(
                             value=raw_val,
                             unit=None,
@@ -176,7 +217,6 @@ class AirportParser:
                             parser_version=PARSER_VERSION,
                             raw_text=raw_val
                         )
-                        break
 
         if not fields:
             return None, issues
