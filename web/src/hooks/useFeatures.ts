@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { getFeatures, getFeatureTypes, getPublications } from '../api';
+import { getFeatures, getFeatureTypes, getIssues, getPublications } from '../api';
 import type {
   FeatureTypeCount,
   GeoJsonFeature,
-  Publication
+  Publication,
+  ValidationIssue
 } from '../types';
 
 export type LoadStatus = 'loading' | 'ready' | 'error';
@@ -14,6 +15,7 @@ export interface FeaturesState {
   features: GeoJsonFeature[];
   drawable: GeoJsonFeature[];
   publication: Publication | null;
+  issues: ValidationIssue[];
   error: string | null;
 }
 
@@ -23,6 +25,7 @@ const INITIAL_STATE: FeaturesState = {
   features: [],
   drawable: [],
   publication: null,
+  issues: [],
   error: null
 };
 
@@ -46,9 +49,10 @@ export function useFeatures(): UseFeaturesResult {
       getFeatureTypes(),
       getFeatures(true),
       getFeatures(false),
-      getPublications()
+      getPublications(),
+      getIssues()
     ])
-      .then(([types, drawable, all, publications]) => {
+      .then(([types, drawable, all, publications, issues]) => {
         if (cancelled) return;
         setState({
           status: 'ready',
@@ -56,6 +60,7 @@ export function useFeatures(): UseFeaturesResult {
           features: all.features,
           drawable: drawable.features,
           publication: publications[0] ?? null,
+          issues,
           error: null
         });
       })

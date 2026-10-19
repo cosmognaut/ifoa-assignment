@@ -1176,6 +1176,47 @@ a {
   color: var(--text-primary);
 }
 
+.inspector-issues {
+  border-top: 1px solid var(--border-subtle);
+  padding: 12px 20px 4px;
+}
+
+.inspector-issue {
+  padding: 10px 0;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.inspector-issue:last-child {
+  border-bottom: none;
+}
+
+.inspector-issue-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inspector-issue-rule {
+  color: var(--text-secondary);
+  text-transform: none;
+}
+
+.inspector-issue-severity {
+  color: var(--text-muted);
+}
+
+.inspector-issue-message {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+.inspector-issue-snippet {
+  margin-top: 4px;
+  color: var(--text-muted);
+  word-break: break-word;
+}
+
 .map-loading {
   display: flex;
   align-items: center;

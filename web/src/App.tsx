@@ -77,7 +77,7 @@ function ContentState({ title, detail, action }: ContentStateProps) {
 }
 
 export function App() {
-  const { status, types, features, drawable, publication, error, reload } = useFeatures();
+  const { status, types, features, drawable, publication, issues, error, reload } = useFeatures();
   const [view, setView] = useState<View>('overview');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [registerFilter, setRegisterFilter] = useState<string>(REGISTER_ALL);
@@ -86,6 +86,11 @@ export function App() {
     if (selectedKey === null) return null;
     return features.find((feature) => feature.properties.naturalKey === selectedKey) ?? null;
   }, [features, selectedKey]);
+
+  const selectedIssues = useMemo(() => {
+    if (selectedKey === null) return [];
+    return issues.filter((issue) => issue.featureKey === selectedKey);
+  }, [issues, selectedKey]);
 
   const aerodromes = useMemo(
     () =>
@@ -183,7 +188,7 @@ export function App() {
           ) : null}
         </section>
 
-        <Inspector feature={selected} loading={status === 'loading'} />
+        <Inspector feature={selected} loading={status === 'loading'} issues={selectedIssues} />
       </main>
     </div>
   );

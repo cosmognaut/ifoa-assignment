@@ -56,3 +56,13 @@ export interface Publication {
   status: string;
   [key: string]: unknown;
 }
+
+export interface ValidationIssue {
+  publicationId: string;
+  severity: string;
+  ruleId: string;
+  featureKey: string | null;
+  section: string;
+  message: string;
+  rawSnippet: string;
+}

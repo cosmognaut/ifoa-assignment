@@ -56,6 +56,16 @@ export interface ChangeRow {
   [key: string]: unknown;
 }
 
+export interface ValidationIssueDoc {
+  publicationId: string;
+  severity: string;
+  ruleId: string;
+  featureKey: string | null;
+  section: string;
+  message: string;
+  rawSnippet: string;
+}
+
 export interface ApiConfig {
   uri: string;
   dbName: string;

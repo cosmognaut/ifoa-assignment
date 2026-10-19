@@ -1,0 +1,478 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>eAIP Ops Console — design reference</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  :root {
+    --bg: #080b10;
+    --panel: #0e141b;
+    --panel-2: #121a23;
+    --line: #1c2632;
+    --line-2: #26323f;
+    --text: #dce6f0;
+    --muted: #758494;
+    --dim: #4d5b6a;
+    --accent: #4c9aff;
+    --ok: #3fb950;
+    --warn: #d29922;
+    --err: #f85149;
+    --mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    --sans: "Inter", ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; }
+  body {
+    background: var(--bg); color: var(--text); font-family: var(--sans);
+    font-size: 13px; -webkit-font-smoothing: antialiased; overflow: hidden;
+  }
+  button { font-family: inherit; font-size: inherit; color: inherit; background: none; border: 0; cursor: pointer; }
+
+  /* ---------------- top bar ---------------- */
+  .top {
+    height: 52px; display: flex; align-items: center; gap: 18px;
+    padding: 0 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+    position: relative; z-index: 1000;
+  }
+  .brand { display: flex; align-items: baseline; gap: 10px; }
+  .brand b { font-size: 14px; letter-spacing: .02em; font-weight: 600; }
+  .brand span { color: var(--dim); font-size: 11px; font-family: var(--mono); letter-spacing: .06em; }
+
+  .pill {
+    display: inline-flex; align-items: center; gap: 7px; padding: 5px 10px;
+    border: 1px solid var(--line-2); border-radius: 6px; background: var(--panel-2);
+    font-family: var(--mono); font-size: 11px; color: var(--text);
+  }
+  .pill .k { color: var(--dim); }
+  .dot { width: 6px; height: 6px; border-radius: 50%; background: var(--ok); box-shadow: 0 0 6px var(--ok); }
+
+  .search { margin-left: auto; position: relative; }
+  .search input {
+    width: 280px; padding: 7px 10px 7px 30px; border-radius: 6px; color: var(--text);
+    background: var(--panel-2); border: 1px solid var(--line-2); font-family: var(--mono);
+    font-size: 11.5px; outline: none;
+  }
+  .search input:focus { border-color: var(--accent); }
+  .search svg { position: absolute; left: 9px; top: 8px; opacity: .45; }
+
+  /* ---------------- shell ---------------- */
+  .shell { display: grid; grid-template-columns: 264px 1fr 392px; height: calc(100% - 52px); }
+
+  .rail {
+    background: var(--panel); border-right: 1px solid var(--line);
+    overflow-y: auto; padding: 14px 0;
+  }
+  .rail h4 {
+    margin: 0; padding: 0 16px 9px; font-size: 10px; letter-spacing: .12em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+  }
+  .rail h4.spaced { margin-top: 22px; }
+
+  .layer {
+    display: flex; align-items: center; gap: 10px; padding: 7px 16px; width: 100%;
+    text-align: left; border-left: 2px solid transparent;
+  }
+  .layer:hover { background: var(--panel-2); }
+  .layer.on { border-left-color: var(--accent); background: rgba(76,154,255,.07); }
+  .swatch { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+  .layer .name { flex: 1; color: var(--text); }
+  .layer.off .name { color: var(--dim); }
+  .layer .n { font-family: var(--mono); font-size: 10.5px; color: var(--muted); }
+
+  .note { padding: 10px 16px 0; color: var(--dim); font-size: 11px; line-height: 1.5; }
+
+  .sualist { border-top: 1px solid var(--line); margin-top: 12px; max-height: 40%; overflow-y: auto; }
+  .sua {
+    display: block; width: 100%; text-align: left; padding: 8px 16px;
+    border-bottom: 1px solid rgba(28,38,50,.5); font-size: 12px;
+  }
+  .sua:hover { background: var(--panel-2); }
+  .sua .id { font-family: var(--mono); font-size: 11.5px; color: var(--text); }
+  .sua .lim { display: block; color: var(--dim); font-family: var(--mono); font-size: 10.5px; margin-top: 2px; }
+
+  /* ---------------- map ---------------- */
+  #map { background: #0a0f15; }
+  .leaflet-container { background: #0a0f15; font-family: var(--sans); }
+  .leaflet-control-attribution {
+    background: rgba(8,11,16,.8) !important; color: var(--dim) !important; font-size: 10px !important;
+  }
+  .leaflet-control-attribution a { color: var(--muted) !important; }
+  .leaflet-bar { border: 1px solid var(--line-2) !important; }
+  .leaflet-bar a {
+    background: var(--panel-2) !important; color: var(--text) !important; border-color: var(--line) !important;
+  }
+
+  .legend {
+    position: absolute; left: 12px; bottom: 12px; z-index: 900;
+    background: rgba(14,20,27,.92); border: 1px solid var(--line); border-radius: 6px;
+    padding: 9px 11px; display: flex; gap: 14px; font-size: 11px; color: var(--muted);
+    backdrop-filter: blur(4px);
+  }
+  .legend i { display: inline-block; width: 8px; height: 8px; border-radius: 2px; margin-right: 5px; vertical-align: 1px; }
+
+  /* ---------------- drawer ---------------- */
+  .drawer {
+    background: var(--panel); border-left: 1px solid var(--line);
+    overflow-y: auto; display: flex; flex-direction: column;
+  }
+  .empty { padding: 40px 24px; color: var(--dim); line-height: 1.7; }
+  .empty b { display: block; color: var(--muted); font-weight: 600; margin-bottom: 6px; }
+
+  .dhead { padding: 16px; border-bottom: 1px solid var(--line); position: sticky; top: 0; background: var(--panel); z-index: 2; }
+  .badge {
+    display: inline-block; padding: 3px 8px; border-radius: 4px; font-family: var(--mono);
+    font-size: 9.5px; letter-spacing: .1em; text-transform: uppercase;
+    background: rgba(76,154,255,.13); color: var(--accent); border: 1px solid rgba(76,154,255,.25);
+  }
+  .dhead h2 { margin: 9px 0 3px; font-size: 17px; font-family: var(--mono); font-weight: 600; letter-spacing: -.01em; }
+  .dhead .sub { color: var(--muted); font-size: 11.5px; font-family: var(--mono); }
+
+  .sect { padding: 4px 0 10px; }
+  .sect > h3 {
+    margin: 0; padding: 12px 16px 7px; font-size: 9.5px; letter-spacing: .13em;
+    text-transform: uppercase; color: var(--dim); font-weight: 600;
+  }
+  .row {
+    display: grid; grid-template-columns: 132px 1fr; gap: 10px;
+    padding: 6px 16px; align-items: baseline;
+  }
+  .row:hover { background: var(--panel-2); }
+  .row .k { color: var(--muted); font-size: 12px; }
+  .row .v { font-family: var(--mono); font-size: 12.5px; color: var(--text); word-break: break-word; }
+  .row .v .unit { color: var(--dim); font-size: 10.5px; margin-left: 3px; }
+  .prov {
+    display: block; margin-top: 3px; font-family: var(--mono); font-size: 9.5px;
+    color: var(--dim); letter-spacing: .02em;
+  }
+  .prov .sec { color: #5d7b99; }
+  .chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 4px; }
+  .chip {
+    font-family: var(--mono); font-size: 10px; padding: 2px 6px; border-radius: 3px;
+    background: var(--panel-2); border: 1px solid var(--line-2); color: var(--muted);
+  }
+  .banner {
+    padding: 9px 16px; background: rgba(248,81,73,.1); border-bottom: 1px solid rgba(248,81,73,.3);
+    color: var(--err); font-size: 11.5px; font-family: var(--mono);
+  }
+  .tag { font-family: var(--mono); font-size: 10px; color: var(--warn); }
+</style>
+</head>
+<body>
+
+<div class="top">
+  <div class="brand"><b>eAIP OPS CONSOLE</b><span>DESIGN REFERENCE</span></div>
+  <div class="pill"><span class="k">CYCLE</span> <span id="cyc">—</span></div>
+  <div class="pill"><span class="k">AMDT</span> <span id="amdt">—</span></div>
+  <div class="pill"><span class="k">EFF</span> <span id="eff">—</span></div>
+  <div class="pill"><span class="dot"></span><span id="status">promoted</span></div>
+  <div class="search">
+    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+    <input id="q" placeholder="EBBR/RWY/25L, EBR01, L179 …" />
+  </div>
+</div>
+
+<div class="shell">
+  <aside class="rail">
+    <h4>Layers</h4>
+    <div id="layers"></div>
+    <div class="note" id="note">Layers are generated from <code>/api/feature-types</code>. No layer list is hardcoded.</div>
+
+    <h4 class="spaced">Airspace — no geometry</h4>
+    <div class="note">Boundaries are published as legal prose (arcs, borders). Attributes kept, polygons deliberately not invented.</div>
+    <div class="sualist" id="sualist"></div>
+  </aside>
+
+  <div id="map"></div>
+
+  <aside class="drawer" id="drawer">
+    <div class="empty">
+      <b>Nothing selected</b>
+      Click an airport, runway, waypoint or route on the map. Every value shown will carry its AIP section and effective date.
+    </div>
+  </aside>
+</div>
+
+<div class="legend">
+  <span><i style="background:#4c9aff"></i>aerodrome</span>
+  <span><i style="background:#3fb950"></i>runway</span>
+  <span><i style="background:#d29922"></i>navaid</span>
+  <span><i style="background:#a371f7"></i>waypoint</span>
+  <span><i style="background:#2dd4bf"></i>route</span>
+</div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+const API = '/api';
+const COLOR = {
+  aerodrome: '#4c9aff', runway: '#3fb950', runwayDirection: '#3fb950',
+  waypoint: '#a371f7', navaid: '#d29922', route: '#2dd4bf',
+  airspace: '#f85149', specialUseArea: '#f85149'
+};
+const LABEL = {
+  aerodrome: 'Airports', runway: 'Runways', runwayDirection: 'Runway ends',
+  waypoint: 'Waypoints', navaid: 'Navaids', route: 'ATS routes',
+  airspace: 'Airspace', specialUseArea: 'Special-use areas'
+};
+const VISIBLE_BY_DEFAULT = new Set(['aerodrome', 'runway', 'waypoint', 'navaid']);
+
+const map = L.map('map', { zoomControl: true, attributionControl: true })
+  .setView([50.7, 4.6], 8);
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  maxZoom: 18, attribution: '&copy; OpenStreetMap &copy; CARTO'
+}).addTo(map);
+
+let all = [];
+const layerGroup = {};
+const enabled = new Set();
+
+function humanise(k) {
+  return k.replace(/([a-z0-9])([A-Z])/g, '$1 $2').replace(/^./, c => c.toUpperCase());
+}
+function num(v) {
+  if (typeof v !== 'number') return String(v);
+  return Number.isInteger(v) ? v.toLocaleString('en-US') : String(v);
+}
+function renderValue(v) {
+  if (v === null || v === undefined || v === '') return '—';
+  if (Array.isArray(v)) return v.map(renderValue).join(' · ');
+  if (typeof v === 'object') {
+    if ('reference' in v) {
+      if (v.reference === 'UNL') return 'UNL';
+      return `${num(v.value)} ${v.unit || ''} ${v.reference || ''}`.trim();
+    }
+    if ('value' in v) return renderValue(v.value);
+    return Object.entries(v).map(([k, x]) => `${k}=${renderValue(x)}`).join(', ');
+  }
+  return String(v);
+}
+function fmtLimit(f) {
+  if (!f || !f.value) return '—';
+  if (f.value.reference === 'UNL') return 'UNL';
+  return `${num(f.value.value)} ${f.value.unit || ''} ${f.value.reference || ''}`.trim();
+}
+
+/* ---------------- rail ---------------- */
+function buildRail(counts) {
+  const el = document.getElementById('layers');
+  el.innerHTML = '';
+  const order = ['aerodrome', 'runway', 'runwayDirection', 'waypoint', 'navaid', 'route', 'airspace', 'specialUseArea'];
+  const present = order.filter(t => counts[t] !== undefined);
+  present.forEach(t => {
+    if (t === 'airspace' || t === 'specialUseArea') return;
+    const on = VISIBLE_BY_DEFAULT.has(t);
+    const b = document.createElement('button');
+    b.className = 'layer ' + (on ? 'on' : 'off');
+    b.innerHTML = `<span class="swatch" style="background:${COLOR[t]}"></span>
+                   <span class="name">${LABEL[t] || t}</span>
+                   <span class="n">${counts[t]}</span>`;
+    b.onclick = () => {
+      const isOn = enabled.has(t);
+      if (isOn) { enabled.delete(t); map.removeLayer(layerGroup[t]); b.classList.remove('on'); b.classList.add('off'); }
+      else { enabled.add(t); layerGroup[t].addTo(map); b.classList.add('on'); b.classList.remove('off'); }
+    };
+    el.appendChild(b);
+  });
+}
+
+function buildSuaList() {
+  const box = document.getElementById('sualist');
+  const items = all.filter(f => f.properties.geometry === null || f.geometry === null);
+  const typed = items.filter(f => ['airspace', 'specialUseArea'].includes(f.properties.featureType));
+  box.innerHTML = '';
+  typed.slice(0, 200).forEach(f => {
+    const b = document.createElement('button');
+    b.className = 'sua';
+    const lo = fmtLimit(f.properties.fields.lowerLimit);
+    const hi = fmtLimit(f.properties.fields.upperLimit);
+    b.innerHTML = `<span class="id">${f.properties.naturalKey.replace(/^(ASP|SUA)\//, '')}</span>
+                   <span class="lim">${lo} – ${hi} · ${f.properties.fields.timeOfActivity?.value ?? '—'}</span>`;
+    b.onclick = () => showFeature(f);
+    box.appendChild(b);
+  });
+}
+
+/* ---------------- map layers ---------------- */
+function buildLayers() {
+  const drawable = all.filter(f => f.geometry !== null);
+  const byType = {};
+  drawable.forEach(f => {
+    (byType[f.properties.featureType] ||= []).push(f);
+  });
+
+  Object.entries(byType).forEach(([t, feats]) => {
+    const g = L.geoJSON({ type: 'FeatureCollection', features: feats }, {
+      style: () => ({ color: COLOR[t], weight: t === 'route' ? 1 : 1.6, opacity: t === 'route' ? .5 : .9 }),
+      pointToLayer: (f, latlng) => {
+        if (t === 'aerodrome') {
+          return L.circleMarker(latlng, {
+            radius: 7, color: COLOR[t], weight: 2, fillColor: '#080b10', fillOpacity: 1
+          });
+        }
+        if (t === 'navaid') {
+          return L.circleMarker(latlng, {
+            radius: 4, color: COLOR[t], weight: 1.5, fillColor: 'rgba(210,153,34,.25)', fillOpacity: 1
+          });
+        }
+        if (t === 'waypoint') {
+          return L.circleMarker(latlng, {
+            radius: 2.2, color: COLOR[t], weight: 1, fillColor: COLOR[t], fillOpacity: .55
+          });
+        }
+        return L.circleMarker(latlng, { radius: 3, color: COLOR[t], fillColor: COLOR[t] });
+      },
+      onEachFeature: (f, layer) => {
+        layer.on('click', () => showFeature(f));
+        layer.on('mouseover', () => layer.setStyle && layer.setStyle({ weight: 3 }));
+        layer.on('mouseout', () => layer.setStyle && layer.setStyle({ weight: 1.6 }));
+      }
+    });
+    layerGroup[t] = g;
+    if (VISIBLE_BY_DEFAULT.has(t)) { g.addTo(map); enabled.add(t); }
+  });
+}
+
+/* ---------------- detail ---------------- */
+function provLine(field) {
+  if (!field || !field.section) return '';
+  return `<span class="prov"><span class="sec">${field.section}</span> · eff ${field.effective_date || '—'}</span>`;
+}
+
+function renderFields(fields) {
+  const rows = [];
+  Object.entries(fields).forEach(([k, f]) => {
+    if (['lowerLimit', 'upperLimit'].includes(k)) return;
+    let v = renderValue(f.value);
+    const unit = f.unit ? `<span class="unit">${f.unit}</span>` : '';
+    const isChips = Array.isArray(f.value);
+    const body = isChips
+      ? `<div class="chips">${f.value.map(x => `<span class="chip">${String(x)}</span>`).join('')}</div>`
+      : `<div class="v">${v}${unit}</div>`;
+    rows.push(`<div class="row"><div class="k">${humanise(k)}</div><div>${body}${provLine(f)}</div></div>`);
+  });
+  return rows.join('');
+}
+
+async function showFeature(f) {
+  const p = f.properties;
+  const drawer = document.getElementById('drawer');
+
+  if (p.featureType === 'aerodrome') return showAirport(p.naturalKey, p);
+
+  const isSua = p.featureType === 'airspace' || p.featureType === 'specialUseArea';
+  const limits = isSua ? `
+    <div class="sect"><h3>Vertical limits</h3>
+      <div class="row"><div class="k">Lower</div><div><div class="v">${fmtLimit(p.fields.lowerLimit)}</div>${provLine(p.fields.lowerLimit)}</div></div>
+      <div class="row"><div class="k">Upper</div><div><div class="v">${fmtLimit(p.fields.upperLimit)}</div>${provLine(p.fields.upperLimit)}</div></div>
+    </div>` : '';
+
+  const lateral = isSua && p.fields.lateralLimitsRaw ? `
+    <div class="sect"><h3>Lateral limits (raw, as published)</h3>
+      <div class="row"><div class="k">—</div><div>
+        <div class="v" style="font-size:11.5px;line-height:1.6;color:var(--muted)">${p.fields.lateralLimitsRaw.value}</div>
+        ${provLine(p.fields.lateralLimitsRaw)}
+      </div></div>
+      <div class="note" style="padding-left:16px;padding-right:16px">No polygon is rendered for this feature. The AIP publishes the boundary as prose, so geometry is intentionally null.</div>
+    </div>` : '';
+
+  drawer.innerHTML = `
+    <div class="dhead">
+      <span class="badge">${p.featureType}</span>
+      <h2>${p.naturalKey}</h2>
+      <div class="sub">${p.parentKey ? 'parent ' + p.parentKey + ' · ' : ''}eff ${p.effectiveFrom}</div>
+    </div>
+    ${limits}${lateral}
+    <div class="sect"><h3>Attributes</h3>${renderFields(p.fields)}</div>`;
+}
+
+async function showAirport(icao, base) {
+  const drawer = document.getElementById('drawer');
+  drawer.innerHTML = `<div class="empty">Loading ${icao}…</div>`;
+  let d;
+  try {
+    d = await (await fetch(`${API}/airports/${icao}`)).json();
+  } catch (e) {
+    drawer.innerHTML = `<div class="banner">API unreachable</div>`;
+    return;
+  }
+  const ae = d.aerodrome ? d.aerodrome.properties : base;
+  const f = ae.fields || {};
+
+  const rwyRows = d.runwayDirections.map(r => {
+    const p = r.properties;
+    const lda = p.fields.lda ? renderValue(p.fields.lda.value) : '—';
+    const ldaUnit = p.fields.lda && p.fields.lda.unit ? p.fields.lda.unit : '';
+    return `<div class="row">
+      <div class="k">RWY ${p.fields.designator ? renderValue(p.fields.designator.value) : '—'}</div>
+      <div><div class="v">LDA ${lda} <span class="unit">${ldaUnit}</span></div>
+      ${p.fields.lda ? provLine(p.fields.lda) : ''}</div>
+    </div>`;
+  }).join('');
+
+  const hoursRows = ['hoursOperator', 'hoursCustoms', 'hoursATS', 'hoursAro', 'hoursFuelling', 'hoursHandling']
+    .filter(k => f[k]).map(k => `<div class="row"><div class="k">${humanise(k).replace('Hours ','')}</div>
+      <div><div class="v">${renderValue(f[k].value)}</div>${provLine(f[k])}</div></div>`).join('');
+
+  const contactRows = ['operatorName', 'operatorTel', 'operatorEmail']
+    .filter(k => f[k]).map(k => `<div class="row"><div class="k">${humanise(k).replace('Operator ','')}</div>
+      <div><div class="v">${renderValue(f[k].value)}</div>${provLine(f[k])}</div></div>`).join('');
+
+  drawer.innerHTML = `
+    <div class="dhead">
+      <span class="badge">aerodrome</span>
+      <h2>${icao}</h2>
+      <div class="sub">${f.elevation ? renderValue(f.elevation.value) + ' ' + (f.elevation.unit || '') : ''}
+        · ${f.magneticVariation ? renderValue(f.magneticVariation.value) : ''}</div>
+    </div>
+    <div class="sect"><h3>Runways</h3>${rwyRows}</div>
+    <div class="sect"><h3>Rescue &amp; fire fighting</h3>
+      ${['rffsCategory', 'rffsEquipment'].filter(k => f[k]).map(k =>
+        `<div class="row"><div class="k">${humanise(k).replace('Rffs ', '')}</div>
+         <div><div class="v">${renderValue(f[k].value)}</div>${provLine(f[k])}</div></div>`).join('')}
+    </div>
+    <div class="sect"><h3>Operational hours</h3>${hoursRows}</div>
+    <div class="sect"><h3>Contacts</h3>${contactRows}</div>`;
+}
+
+/* ---------------- boot ---------------- */
+async function boot() {
+  try {
+    const pubs = await (await fetch(`${API}/publications`)).json();
+    const p = pubs[0] || {};
+    document.getElementById('cyc').textContent = p.cycleId || '—';
+    document.getElementById('amdt').textContent = p.amendmentId || '—';
+    document.getElementById('eff').textContent = p.effectiveDate || '—';
+    document.getElementById('status').textContent = p.status || '—';
+
+    const types = await (await fetch(`${API}/feature-types`)).json();
+    const counts = Object.fromEntries(types.map(t => [t.featureType, t.count]));
+
+    const fc = await (await fetch(`${API}/features`)).json();
+    all = fc.features;
+
+    buildRail(counts);
+    buildLayers();
+    buildSuaList();
+  } catch (e) {
+    document.getElementById('drawer').innerHTML =
+      `<div class="banner">Cannot reach ${API}. Start the API: cd api &amp;&amp; npm start</div>`;
+  }
+}
+
+document.getElementById('q').addEventListener('keydown', e => {
+  if (e.key !== 'Enter') return;
+  const term = e.target.value.trim().toUpperCase();
+  if (!term) return;
+  const hit = all.find(f => f.properties.naturalKey.toUpperCase() === term)
+           || all.find(f => f.properties.naturalKey.toUpperCase().includes(term));
+  if (hit) {
+    showFeature(hit);
+    if (hit.geometry) map.setView([hit.geometry.coordinates[1], hit.geometry.coordinates[0]], 12);
+  }
+});
+
+boot();
+</script>
+</body>
+</html>

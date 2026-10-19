@@ -6,7 +6,7 @@ import type { Field } from '../types';
 // capitals when a field name is turned into a label. This is not aeronautical data.
 const UPPERCASE_WORDS = new Set([
   'ATS', 'ARP', 'ILS', 'VOR', 'DME', 'NDB', 'RFFS', 'PPR', 'IFR', 'VFR',
-  'AIS', 'ARO', 'MET', 'ATC', 'ICAO', 'RWY', 'TORA', 'TODA', 'ASDA', 'LDA'
+  'AIS', 'ARO', 'MET', 'ATC', 'ICAO', 'RWY', 'TORA', 'TODA', 'ASDA', 'LDA', 'AFS'
 ]);
 
 export function humaniseFieldName(name: string): string {

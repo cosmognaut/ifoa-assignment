@@ -17,7 +17,8 @@ import type {
   FeatureCollectionResponse,
   FeatureDoc,
   GeoJsonFeature,
-  PublicationDoc
+  PublicationDoc,
+  ValidationIssueDoc
 } from './db.ts';
 
 const FEATURE_TYPE = 'featureType' as const;
@@ -86,6 +87,7 @@ export function createApp({ db, config }: CreateAppOptions): Express {
   const features = db.collection<FeatureDoc>(config.collections.features);
   const publications = db.collection<PublicationDoc>(config.collections.publications);
   const changes = db.collection<ChangeRow>(config.collections.changes);
+  const validationIssues = db.collection<ValidationIssueDoc>(config.collections.validationIssues);
 
   const app = express();
   app.disable('x-powered-by');
@@ -254,6 +256,36 @@ export function createApp({ db, config }: CreateAppOptions): Express {
     const changeFilter: Filter<ChangeRow> = { fromCycle: from, toCycle: to };
     const rows = await changes
       .find(changeFilter, { projection: { _id: 0 } })
+      .toArray();
+    res.json(rows);
+  }));
+
+  app.get('/api/issues', asyncHandler(async (req, res) => {
+    const { publicationId, featureKey, severity } = req.query;
+    const filter: Filter<ValidationIssueDoc> = {};
+
+    if (publicationId !== undefined) {
+      if (typeof publicationId !== 'string' || publicationId === '') {
+        return res.status(400).json({ error: 'publicationId must be a single string' });
+      }
+      filter.publicationId = publicationId;
+    }
+    if (featureKey !== undefined) {
+      if (typeof featureKey !== 'string') {
+        return res.status(400).json({ error: 'featureKey must be a single string' });
+      }
+      filter.featureKey = featureKey;
+    }
+    if (severity !== undefined) {
+      if (typeof severity !== 'string') {
+        return res.status(400).json({ error: 'severity must be a single string' });
+      }
+      filter.severity = severity;
+    }
+
+    const rows = await validationIssues
+      .find(filter, { projection: { _id: 0 } })
+      .sort({ ruleId: 1, featureKey: 1 })
       .toArray();
     res.json(rows);
   }));

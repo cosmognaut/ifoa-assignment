@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
-import type { GeoJsonFeature } from '../types';
+import type { GeoJsonFeature, ValidationIssue } from '../types';
 import { FieldRow, renderValue } from './FieldRow';
 import { ProvenanceBlock } from './ProvenanceBlock';
 
 export interface InspectorProps {
   feature: GeoJsonFeature | null;
   loading: boolean;
+  issues: ValidationIssue[];
 }
 
 const LATERAL_KEY = 'lateralLimitsRaw';
@@ -31,7 +32,7 @@ function InspectorSkeleton() {
   );
 }
 
-export function Inspector({ feature, loading }: InspectorProps) {
+export function Inspector({ feature, loading, issues }: InspectorProps) {
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const naturalKey = feature === null ? null : feature.properties.naturalKey;
 
@@ -84,6 +85,24 @@ export function Inspector({ feature, loading }: InspectorProps) {
           <div className="raw-block">
             <div className="raw-block-title t1">LATERAL LIMITS RAW</div>
             <div className="raw-well t2 mono">{renderValue(lateral.value)}</div>
+          </div>
+        )}
+
+        {issues.length === 0 ? null : (
+          <div className="inspector-issues">
+            <div className="raw-block-title t1">validation</div>
+            {issues.map((issue) => (
+              <div className="inspector-issue" key={`${issue.ruleId}-${issue.message}`}>
+                <div className="inspector-issue-head">
+                  <span className="inspector-issue-rule t2 mono">{issue.ruleId}</span>
+                  <span className="inspector-issue-severity t1">{issue.severity}</span>
+                </div>
+                <p className="inspector-issue-message t3">{issue.message}</p>
+                {issue.rawSnippet === '' ? null : (
+                  <div className="inspector-issue-snippet t1 mono">{issue.rawSnippet}</div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>

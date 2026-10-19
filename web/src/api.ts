@@ -7,7 +7,8 @@ import type {
   GeoJsonFeature,
   Geometry,
   PointCoordinates,
-  Publication
+  Publication,
+  ValidationIssue
 } from './types';
 
 const API_ROOT = '/api';
@@ -170,5 +171,26 @@ export function getPublications(): Promise<Publication[]> {
     `${API_ROOT}/publications`,
     (value: unknown): value is Publication[] =>
       Array.isArray(value) && value.every(isPublication)
+  );
+}
+
+function isValidationIssue(value: unknown): value is ValidationIssue {
+  if (!isRecord(value)) return false;
+  return (
+    typeof value.publicationId === 'string' &&
+    typeof value.severity === 'string' &&
+    typeof value.ruleId === 'string' &&
+    (value.featureKey === null || typeof value.featureKey === 'string') &&
+    typeof value.section === 'string' &&
+    typeof value.message === 'string' &&
+    typeof value.rawSnippet === 'string'
+  );
+}
+
+export function getIssues(): Promise<ValidationIssue[]> {
+  return fetchJson(
+    `${API_ROOT}/issues`,
+    (value: unknown): value is ValidationIssue[] =>
+      Array.isArray(value) && value.every(isValidationIssue)
   );
 }

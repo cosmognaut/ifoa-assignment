@@ -9,7 +9,8 @@ import type {
   FeatureCollectionResponse,
   FeatureDoc,
   FeatureProperties,
-  GeoJsonFeature
+  GeoJsonFeature,
+  ValidationIssueDoc
 } from '../db.ts';
 import { createApp } from '../server.ts';
 
@@ -27,6 +28,8 @@ let airspaceCount = 0;
 let specialUseAreaCount = 0;
 let changedRow: ChangeRow | null = null;
 let nullKeyDoc: Pick<FeatureDoc, 'naturalKey'> | null = null;
+let issueCount = 0;
+let issueWithKey: Pick<ValidationIssueDoc, 'featureKey' | 'ruleId'> | null = null;
 
 interface JsonResponse {
   status: number;
@@ -157,6 +160,13 @@ before(async () => {
   specialUseAreaCount = await features.countDocuments({ featureType: 'specialUseArea' });
   changedRow = await db.collection<ChangeRow>(config.collections.changes).findOne({});
   nullKeyDoc = await features.findOne({ geometry: null }, { projection: { _id: 0, naturalKey: 1 } });
+
+  const issues = db.collection<ValidationIssueDoc>(config.collections.validationIssues);
+  issueCount = await issues.countDocuments({});
+  issueWithKey = await issues.findOne(
+    { featureKey: { $ne: null } },
+    { projection: { _id: 0, featureKey: 1, ruleId: 1 } }
+  );
 
   const app = createApp({ db, config });
   const listening = await new Promise<Server>((resolve) => {
@@ -424,4 +434,35 @@ test('23. no response contains an _id object key', () => {
     }
     assertNoIdKey(body);
   }
+});
+
+test('24. issues endpoint returns the whole validation collection', async () => {
+  const { status, body } = await request('/api/issues');
+  assert.equal(status, 200);
+  const rows = expectArray(body);
+  assert.equal(rows.length, issueCount);
+  for (const row of rows) {
+    const record = expectRecord(row);
+    expectString(record.ruleId);
+    expectString(record.message);
+    expectString(record.severity);
+  }
+});
+
+test('25. issues can be filtered to a single feature', async () => {
+  if (issueWithKey === null) return;
+  const key = issueWithKey.featureKey ?? '';
+  const { status, body } = await request(`/api/issues?featureKey=${encodeURIComponent(key)}`);
+  assert.equal(status, 200);
+  const rows = expectArray(body);
+  assert.ok(rows.length > 0);
+  for (const row of rows) {
+    assert.equal(expectRecord(row).featureKey, key);
+  }
+});
+
+test('26. issues for an unknown feature are an empty array', async () => {
+  const { status, body } = await request('/api/issues?featureKey=NO/SUCH/KEY');
+  assert.equal(status, 200);
+  assert.deepEqual(expectArray(body), []);
 });
