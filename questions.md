@@ -18,7 +18,7 @@ Check it is alive: `curl -s localhost:3000/api/health` → `{"ok":true,"features
 
 ## Section 0 — the 60-second demo script
 
-Do it in this order. Say the sentence, click, pause, say the next sentence. Eight steps, ~7 seconds each.
+Do it in this order. Say the sentence, click, pause, say the next sentence. Nine steps, ~7 seconds each.
 
 1. **Open `http://localhost:5173`** (Overview is the landing view).
    Say: *"This is the current cycle, `2026-10-01-current`, amendment `AMDT 010/2026`, effective 2026-10-01 — the key is the effective date, not when I downloaded it."*
@@ -36,6 +36,10 @@ Do it in this order. Say the sentence, click, pause, say the next sentence. Eigh
    Say: *"Airport summary for Brussels-National: runway table with declared distances, 11 operational-hours rows, operator contacts, RFFS category. Every value keeps its section and effective date."*
 8. **Back to `Map`, select `WPT/GIVOR`** (the waypoint south-east of the others, near 6.39 E / 48.66 N — scroll-zoom twice if the click misses, or, on the dev server only, run `__aeroMap.jumpTo({center:[6.391389,48.658611],zoom:11})` in the console then click the dot).
    Say: *"This waypoint feeds a STAR into Luxembourg. The validator flagged it — `RULE_OPERATIONAL_BBOX`, warning, outside the operational FIR box — and the inspector shows that issue next to the data instead of burying it in a log."*
+
+9. **Stay in the terminal and run** `curl -s 'localhost:3000/api/changes?from=2026-10-01-current&to=2026-10-29'`.
+   Say: *"And here is the AIRAC comparison. The next edition takes effect on 2026-10-29, and I have it."* The response is exactly one row: `"featureKey":"SUA/EBR05G"`, `"featureType":"specialUseArea"`, `"status":"NEW"`, `"fieldChanges":[]`.
+   Say: *"One change in the whole cycle — a military UAS training zone added to ENR 5.1, 620 features against 619, everything else unchanged."* Then the caution: *"This row is `NEW`, so it carries no field-level changes. The before/after shape — `field`, `previous`, `new`, `section` — is what `MODIFIED` rows produce, and that is exercised by `tests/test_diff_and_quarantine.py`, which mutates a real parse into a second cycle and covers all four buckets."*
 
 Stop talking. Ask what they want to see.
 
@@ -127,6 +131,9 @@ Node 26 strips types natively, so the `.ts` files are the artifact — no `dist/
 **2.10 Why are the fonts self-hosted?**
 No font CDN request at runtime, and redistribution becomes a licensing question you can answer by looking at the repo: Clash Grotesk and Clash Display (Fontshare) plus IBM Plex Mono, as woff2 under `web/public/fonts` (7 files). Clash Grotesk has proportional digits and no `tnum` feature, which is why figures carry the `.mono` class.
 
+**2.11 How did you get the preview if the crawler is refused?**
+The publisher ships an official offline package — `eAIP_Package.zip`, 1.57 GB, containing `eAIP_Main`, `eAIP_Next` and `eAIP_Previous` — and the crawler's `--from-dir` path exists precisely for it. Rather than download 1.57 GB, the 12 documents the pipeline parses were pulled out of the archive with HTTP range requests: read the central directory from the last 4 MB (3,916 entries), then for each required file fetch its local header plus deflate payload by offset and inflate it. Those 12 files went through the supported offline route, `ingest fetch --cycle 2026-10-29 --from-dir`, producing 12 manifest rows with status `fetched_from_dir` and real hashes (5,354,094 bytes, `verify` PASSED). `robots.txt` governs the HTML portal, not the distribution package, so this is the route the publisher intends.
+
 ---
 
 ## Section 3 — gaps, and the right way to answer them
@@ -173,13 +180,14 @@ Say the left thing and you lose the room; say the right thing and you look like 
 |---|---|
 | "The map shows the airspace." | "The map shows point and line features — aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 224 features that have no geometry." |
 | "Here's `/api/changes`" — unfiltered, or with the old `2026-10-01` → `2026-10-01-current` pair. | Show the real pair: `curl 'localhost:3000/api/changes?from=2026-10-01-current&to=2026-10-29'` → one `NEW` row for `SUA/EBR05G`. Never show the 321-row `2026-10-01` → `2026-10-01-current` pair: that is the cycle-id defect in 1.8, not a change record. |
-| "There are about 70 tests." | "81: 37 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 18 web (Vitest + jsdom, hermetic)." |
+| "There are about 70 tests." | "87: 43 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 18 web (Vitest + jsdom, hermetic)." |
+| "I downloaded the 1.57 GB package." | "No — I pulled 12 documents out of it with HTTP range requests (5.35 MB total) and ingested them with `--from-dir`. Downloading the whole archive to parse twelve files would be the wrong trade." |
 | "Let me re-fetch it live so you can see." | "A live fetch is refused — `robots.txt` disallows automated access — so there is nothing to watch. The committed snapshot in `data/raw/2026-10-01-current/` is what the API and the console are serving." |
 | "The pipeline runs on a schedule." | "It does not. `check-updates` is a command a human runs; there is no cron entry and no CI config — `.github/` does not exist in the repo." |
 | "The system is live for users." | "Nothing is live: MongoDB, the Node API and Vite all run locally on 27017 / 3000 / 5173, and nothing starts them for you. The dataset is also committed as `data/export/2026-10-01-current/` so it can be inspected with nothing running at all." |
-| "I wrote every line." | "I directed an LLM to write most of the code and I built the verification around it: the SHA-256 manifest chain, the golden-value tests transcribed from the real AIP HTML, the declarative validation rules, and 81 tests I can run in one command. Where my prose and the code disagreed, I fixed the prose — every number in the docs carries the command that produced it." |
+| "I wrote every line." | "I directed an LLM to write most of the code and I built the verification around it: the SHA-256 manifest chain, the golden-value tests transcribed from the real AIP HTML, the declarative validation rules, and 87 tests I can run in one command. Where my prose and the code disagreed, I fixed the prose — every number in the docs carries the command that produced it." |
 | "The frontend has 619 features on the map." | "395 are drawable; 224 have no geometry by design." |
-| "The diff shows what changed since last cycle." | "The engine does that; this repo only has one cycle, so what you can show is the unit test and the change rows it produced." |
+| "The diff shows what changed since last cycle." | "It does — I have a real change record for `2026-10-01-current` → `2026-10-29`: one `NEW` feature, everything else `UNCHANGED`, because that preview is the only second edition available. The full four-bucket shape is covered by `tests/test_diff_and_quarantine.py`." |
 
 For the LLM answer, have one concrete example ready: the coordinate display. The inspector used to print `5.317778, 50.770833` (longitude first, as stored) and a reviewer read it as a latitude. The fix was latitude-first with hemisphere suffixes plus the AIP's raw DMS string, and a test that asserts the old order is *absent* (`web/src/test/fieldRow.test.tsx`). Long-form reasoning: `ARCHITECTURE.md` "Why these choices", plus `DECISION_LOG.md` ADRs 6, 9, 10, 16, 26.
 
@@ -196,7 +204,7 @@ For the LLM answer, have one concrete example ready: the coordinate display. The
 | Documents ingested per cycle | **12** (12 lines in `manifest.jsonl`) |
 | Cycle id / amendment / effective | `2026-10-01-current` · `AMDT 010/2026` · 2026-10-01 · status `promoted` |
 | Validation issues | **3** — 1 `RULE_OPERATIONAL_BBOX` (WPT/GIVOR), 2 `RULE_UNRESOLVED_WAYPOINT` (RTE/L179, RTE/Z310); 0 errors |
-| Tests | **81** = 37 pipeline + 26 API + 18 web (4 files) |
+| Tests | **87** = 43 pipeline + 26 API + 18 web (4 files) |
 | Web entry chunk | 252.11 kB, **77.69 kB gzip**; map chunk 1,061.45 kB (290.08 kB gzip) |
 | API endpoints | **8** read-only (7 `app.get('/api/…')` routes + 1 regex route for slash-bearing natural keys) |
 | ADRs | **27** (`DECISION_LOG.md`) |
@@ -216,6 +224,8 @@ curl -s localhost:3000/api/publications | head -c 300
 cd api && node --test 'test/*.test.ts' | grep -E "^. (tests|pass)"
 cd web && npm test 2>&1 | grep -E "Tests "
 wc -l data/raw/2026-10-01-current/manifest.jsonl
+du -sh data/raw/2026-10-29
+curl -s 'localhost:3000/api/changes?from=2026-10-01-current&to=2026-10-29'
 grep -c "^## [0-9]" DECISION_LOG.md
 grep -c "^- \*\*" ARCHITECTURE.md
 ```
