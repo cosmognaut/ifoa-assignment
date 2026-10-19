@@ -1,0 +1,9 @@
+# crawler and source ingestion config
+crawler:
+  user_agent_format:  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; contact: me@ishu.foo) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36"
+  rate_limit_seconds: 1
+  timeout_seconds: 30
+  cache_dir: "data/raw"
+  base_product_url: "https://ops.skeyes.be/html/belgocontrol_static/eaip/eAIP_Product/index.html"
+  respect_robots_txt: true
+  max_retries: 3

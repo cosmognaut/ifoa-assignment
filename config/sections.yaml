@@ -1,0 +1,118 @@
+# section discovery/table allocation specification
+# both file matching and element anchor/heading locators are supported.
+# see https://www.eurocontrol.int/publication/eurocontrol-specification-electronic-aeronautical-information-publication-eaip
+
+sections:
+  # General Information
+  - id: "GEN-0.2"
+    name: "Record of AIP Amendments"
+    file_pattern: "EB-GEN-0.2-en-GB.html"
+    anchor: "GEN-0.2"
+    target_type: "publicationMetadata"
+
+  # Aerodrome Sections (Discovered dynamically per airport in target_airports)
+  - id: "AD-2.1"
+    name: "Aerodrome Location Indicator and Name"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.1"
+    heading_pattern: "AD 2.1"
+    target_type: "aerodrome"
+
+  - id: "AD-2.2"
+    name: "Aerodrome Geographical and Administrative Data"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.2"
+    heading_pattern: "AD 2.2"
+    target_type: "aerodrome"
+
+  - id: "AD-2.3"
+    name: "Operational Hours"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.3"
+    heading_pattern: "AD 2.3"
+    target_type: "operationalInfo"
+
+  - id: "AD-2.6"
+    name: "Rescue and Fire Fighting Services"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.6"
+    heading_pattern: "AD 2.6"
+    target_type: "operationalInfo"
+
+  - id: "AD-2.12"
+    name: "Runway Physical Characteristics"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.12"
+    heading_pattern: "AD 2.12"
+    target_type: "runway"
+
+  - id: "AD-2.13"
+    name: "Declared Distances"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.13"
+    heading_pattern: "AD 2.13"
+    target_type: "runwayDirection"
+
+  - id: "AD-2.19"
+    name: "Radio Navigation and Landing Aids"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.19"
+    heading_pattern: "AD 2.19"
+    target_type: "navaid"
+
+  - id: "AD-2.20"
+    name: "Local Aerodrome Regulations"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.20"
+    heading_pattern: "AD 2.20"
+    target_type: "operationalInfo"
+
+  # En-Route Sections
+  - id: "ENR-2.1"
+    name: "Air Traffic Services Airspace"
+    file_pattern: "EB-ENR-2.1-en-GB.html"
+    anchor: "ENR-2.1"
+    heading_pattern: "ENR 2.1"
+    target_type: "airspace"
+
+  - id: "ENR-3.1"
+    name: "Lower ATS Routes"
+    file_pattern: "EB-ENR-3.1-en-GB.html"
+    anchor: "ENR-3.1"
+    heading_pattern: "ENR 3.1"
+    target_type: "route"
+
+  - id: "ENR-3.2"
+    name: "Upper ATS Routes"
+    file_pattern: "EB-ENR-3.2-en-GB.html"
+    anchor: "ENR-3.2"
+    heading_pattern: "ENR 3.2"
+    target_type: "route"
+
+  - id: "ENR-4.1"
+    name: "Radio Navigation Aids - En-Route"
+    file_pattern: "EB-ENR-4.1-en-GB.html"
+    anchor: "ENR-4.1"
+    heading_pattern: "ENR 4.1"
+    target_type: "navaid"
+
+  - id: "ENR-4.4"
+    name: "Significant Points (Waypoints)"
+    file_pattern: "EB-ENR-4.4-en-GB.html"
+    anchor: "ENR-4.4"
+    heading_pattern: "ENR 4.4"
+    target_type: "waypoint"
+
+  - id: "ENR-5.1"
+    name: "Prohibited, Restricted and Danger Areas"
+    file_pattern: "EB-ENR-5.1-en-GB.html"
+    anchor: "ENR-5.1"
+    heading_pattern: "ENR 5.1"
+    target_type: "specialUseArea"
+
+  - id: "ENR-5.2"
+    name: "Military Exercise and Training Areas"
+    file_pattern: "EB-ENR-5.2-en-GB.html"
+    anchor: "ENR-5.2"
+    heading_pattern: "ENR 5.2"
+    target_type: "specialUseArea"

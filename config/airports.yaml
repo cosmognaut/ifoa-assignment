@@ -1,0 +1,15 @@
+# target aerodromes for ingestion and processing
+# note: ELLX remains commented out until EBBR, EBCI, and EBLG pass all vertical slice tests.
+target_airports:
+
+  - icao: "EBBR"
+    name: "BRUSSELS / Brussels-National"
+
+  - icao: "EBCI"
+    name: "CHARLEROI / Brussels South"
+
+  - icao: "EBLG"
+    name: "LIÈGE / Liège"
+
+  # - icao: "ELLX"
+  #   name: "LUXEMBOURG / Luxembourg"
