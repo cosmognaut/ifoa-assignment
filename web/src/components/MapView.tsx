@@ -1,107 +1,202 @@
-import L from 'leaflet';
+import * as maplibregl from 'maplibre-gl';
+import maplibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import type { ErrorEvent, GeoJSONSource, MapMouseEvent } from 'maplibre-gl';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { FeatureType, FeatureTypeCount, GeoJsonFeature } from '../types';
-import { LayerPanel, featureColour } from './LayerPanel';
+import { LayerPanel } from './LayerPanel';
 
-const SELECTION_PANE = 'selection-pane';
-const ACCENT_TOKEN = '--accent';
+const STYLE_BASE = 'https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json';
+const SOURCE_ID = 'features';
 
-// Draw order inside the shared canvas renderer. Lines first, points last, so a
-// point's 14px hit circle is never shadowed by a line's hit band. Aerodrome is
-// last because it is the largest point feature.
-const TYPE_DRAW_ORDER: FeatureType[] = [
-  'runway',
-  'route',
-  'waypoint',
-  'runwayDirection',
-  'navaid',
-  'aerodrome'
+maplibregl.setWorkerUrl(maplibreWorkerUrl);
+
+const TYPE_LAYER_IDS: Record<string, string> = {
+  route: 'route-line',
+  runway: 'runway-line',
+  runwayDirection: 'runwaydir-point',
+  waypoint: 'waypoint-point',
+  navaid: 'navaid-point',
+  aerodrome: 'aerodrome-point'
+};
+
+const SELECTION_LAYERS = ['selection-point', 'selection-line'];
+
+const CLICKABLE_LAYERS = [
+  'aerodrome-point',
+  'navaid-point',
+  'waypoint-point',
+  'runwaydir-point',
+  'runway-line',
+  'route-line'
 ];
 
-function drawPriority(type: FeatureType): number {
-  const index = TYPE_DRAW_ORDER.indexOf(type);
-  return index === -1 ? TYPE_DRAW_ORDER.length : index;
-}
+type MapFilter = Parameters<maplibregl.Map['setFilter']>[1];
+type MapLayer = Parameters<maplibregl.Map['addLayer']>[0];
 
-function cssToken(name: string): string {
-  const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  return value === '' ? 'transparent' : value;
-}
-
-function pointStyle(type: FeatureType, colour: string): L.CircleMarkerOptions {
-  switch (type) {
-    case 'aerodrome':
-      return { radius: 7, color: colour, weight: 2.5, fillColor: colour, fillOpacity: 1 };
-    case 'runwayDirection':
-      return { radius: 4.5, color: colour, weight: 1.5, fillColor: colour, fillOpacity: 1 };
-    case 'navaid':
-      return { radius: 5.5, color: colour, weight: 2, fillOpacity: 0 };
-    case 'waypoint':
-      return { radius: 3.5, color: colour, weight: 0, fillColor: colour, fillOpacity: 0.9 };
-    default:
-      return { radius: 4, color: colour, weight: 1.5, fillColor: colour, fillOpacity: 1 };
+function styleUrl(): string {
+  const key = import.meta.env.VITE_CARTO_API_KEY;
+  if (typeof key !== 'string' || key.trim() === '') {
+    return STYLE_BASE;
   }
+  return `${STYLE_BASE}?api_key=${encodeURIComponent(key.trim())}`;
 }
 
-function lineOptions(type: FeatureType, colour: string): L.PolylineOptions {
-  if (type === 'runway') {
-    return { color: colour, weight: 5, opacity: 1 };
+const STYLE_URL = styleUrl();
+
+interface MapFeatureProperties {
+  naturalKey: string;
+  featureType: FeatureType;
+  parentKey: string | null;
+  effectiveFrom: string;
+}
+
+interface MapFeature {
+  type: 'Feature';
+  geometry: NonNullable<GeoJsonFeature['geometry']>;
+  properties: MapFeatureProperties;
+}
+
+const FEATURE_LAYERS: MapLayer[] = [
+  {
+    id: 'route-line',
+    type: 'line',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'featureType'], 'route'],
+    paint: {
+      'line-color': '#38BDF8',
+      'line-width': 2,
+      'line-dasharray': [3, 2],
+      'line-opacity': 0.8
+    }
+  },
+  {
+    id: 'runway-line',
+    type: 'line',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'featureType'], 'runway'],
+    paint: {
+      'line-color': '#FFFFFF',
+      'line-width': 5
+    }
+  },
+  {
+    id: 'runwaydir-point',
+    type: 'circle',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'featureType'], 'runwayDirection'],
+    paint: {
+      'circle-radius': 4.5,
+      'circle-color': '#E5E5E5',
+      'circle-stroke-color': '#000000',
+      'circle-stroke-width': 1.5
+    }
+  },
+  {
+    id: 'waypoint-point',
+    type: 'circle',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'featureType'], 'waypoint'],
+    paint: {
+      'circle-radius': 3.5,
+      'circle-color': '#C084FC',
+      'circle-stroke-width': 0
+    }
+  },
+  {
+    id: 'navaid-point',
+    type: 'circle',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'featureType'], 'navaid'],
+    paint: {
+      'circle-radius': 5.5,
+      'circle-color': 'rgba(0, 0, 0, 0)',
+      'circle-stroke-color': '#22D3EE',
+      'circle-stroke-width': 2
+    }
+  },
+  {
+    id: 'aerodrome-point',
+    type: 'circle',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'featureType'], 'aerodrome'],
+    paint: {
+      'circle-radius': 7,
+      'circle-color': '#C8FF00',
+      'circle-stroke-color': '#000000',
+      'circle-stroke-width': 2
+    }
+  },
+  {
+    id: 'selection-point',
+    type: 'circle',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'naturalKey'], ''],
+    paint: {
+      'circle-radius': 15,
+      'circle-color': 'rgba(0, 0, 0, 0)',
+      'circle-stroke-color': '#C8FF00',
+      'circle-stroke-width': 2
+    }
+  },
+  {
+    id: 'selection-line',
+    type: 'line',
+    source: SOURCE_ID,
+    filter: ['==', ['get', 'naturalKey'], ''],
+    paint: {
+      'line-color': '#C8FF00',
+      'line-width': 7,
+      'line-opacity': 0.35
+    }
   }
-  if (type === 'route') {
-    return { color: colour, weight: 2, opacity: 0.8, dashArray: '6 4' };
-  }
-  return { color: colour, weight: 2, opacity: 0.8 };
-}
+];
 
-interface FeatureLayers {
-  visual: L.Layer;
-  hit: L.Layer;
-}
-
-function createFeatureLayers(
-  feature: GeoJsonFeature,
-  onSelect: (naturalKey: string) => void
-): FeatureLayers {
-  const geometry = feature.geometry;
-  if (geometry === null) {
+function toMapFeature(feature: GeoJsonFeature): MapFeature {
+  if (feature.geometry === null) {
     throw new Error(
       `Invariant violated: null geometry reached the map for ${feature.properties.naturalKey}`
     );
   }
+  return {
+    type: 'Feature',
+    geometry: feature.geometry,
+    properties: {
+      naturalKey: feature.properties.naturalKey,
+      featureType: feature.properties.featureType,
+      parentKey: feature.properties.parentKey,
+      effectiveFrom: feature.properties.effectiveFrom
+    }
+  };
+}
 
-  const { naturalKey, featureType } = feature.properties;
-  const colour = featureColour(featureType);
-
-  if (geometry.type === 'Point') {
-    const [lon, lat] = geometry.coordinates;
-    const latlng: [number, number] = [lat, lon];
-    const visual = L.circleMarker(latlng, {
-      ...pointStyle(featureType, colour),
-      interactive: false
-    });
-    const hit = L.circleMarker(latlng, {
-      radius: 14,
-      stroke: false,
-      fill: true,
-      fillOpacity: 0,
-      interactive: true
-    });
-    hit.on('click', () => {
-      onSelect(naturalKey);
-    });
-    return { visual, hit };
+function buildFeatureCollection(features: GeoJsonFeature[]): {
+  type: 'FeatureCollection';
+  features: MapFeature[];
+} {
+  const mapFeatures: MapFeature[] = [];
+  for (const feature of features) {
+    try {
+      mapFeatures.push(toMapFeature(feature));
+    } catch (error) {
+      console.error(error);
+    }
   }
+  return { type: 'FeatureCollection', features: mapFeatures };
+}
 
-  const latLngs: [number, number][] = geometry.coordinates.map(([lon, lat]) => [lat, lon]);
-  const visual = L.polyline(latLngs, {
-    ...lineOptions(featureType, colour),
-    interactive: false
-  });
-  const hit = L.polyline(latLngs, { weight: 14, opacity: 0, interactive: true });
-  hit.on('click', () => {
-    onSelect(naturalKey);
-  });
-  return { visual, hit };
+function setTypeVisibility(map: maplibregl.Map, active: Set<string>): void {
+  for (const [type, layerId] of Object.entries(TYPE_LAYER_IDS)) {
+    if (map.getLayer(layerId) === undefined) continue;
+    map.setLayoutProperty(layerId, 'visibility', active.has(type) ? 'visible' : 'none');
+  }
+}
+
+function setSelectionFilter(map: maplibregl.Map, selectedKey: string | null): void {
+  const filter: MapFilter = ['==', ['get', 'naturalKey'], selectedKey ?? ''];
+  for (const layerId of SELECTION_LAYERS) {
+    if (map.getLayer(layerId) === undefined) continue;
+    map.setFilter(layerId, filter);
+  }
 }
 
 export interface MapViewProps {
@@ -122,10 +217,13 @@ export function MapView({
   onShowRegister
 }: MapViewProps) {
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const mapRef = useRef<L.Map | null>(null);
-  const groupsRef = useRef<Map<string, L.LayerGroup>>(new Map());
-  const overlayRef = useRef<L.LayerGroup | null>(null);
+  const mapRef = useRef<maplibregl.Map | null>(null);
+  const drawableRef = useRef(drawable);
+  const activeRef = useRef<Set<string>>(new Set());
+  const selectedKeyRef = useRef<string | null>(selectedKey);
+  const onSelectRef = useRef(onSelect);
 
+  const [mapReady, setMapReady] = useState(false);
   const [active, setActive] = useState<Set<string>>(() => new Set());
 
   const drawableTypes = useMemo(() => {
@@ -136,37 +234,20 @@ export function MapView({
   const typeSignature = drawableTypes.join('|');
 
   useEffect(() => {
-    const container = containerRef.current;
-    if (container === null) return;
+    drawableRef.current = drawable;
+  }, [drawable]);
 
-    const map = L.map(container, {
-      preferCanvas: true,
-      renderer: L.canvas({ tolerance: 8 })
-    }).setView([50.7, 4.6], 8);
+  useEffect(() => {
+    activeRef.current = active;
+  }, [active]);
 
-    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
-      attribution: '&copy; OpenStreetMap contributors',
-      maxZoom: 19
-    }).addTo(map);
+  useEffect(() => {
+    selectedKeyRef.current = selectedKey;
+  }, [selectedKey]);
 
-    map.createPane(SELECTION_PANE);
-    const selectionPane = map.getPane(SELECTION_PANE);
-    if (selectionPane !== undefined) {
-      selectionPane.style.zIndex = '450';
-      selectionPane.style.pointerEvents = 'none';
-    }
-
-    overlayRef.current = L.layerGroup().addTo(map);
-    groupsRef.current = new Map();
-    mapRef.current = map;
-
-    return () => {
-      map.remove();
-      mapRef.current = null;
-      overlayRef.current = null;
-      groupsRef.current = new Map();
-    };
-  }, []);
+  useEffect(() => {
+    onSelectRef.current = onSelect;
+  }, [onSelect]);
 
   useEffect(() => {
     setActive(new Set(drawableTypes));
@@ -175,88 +256,123 @@ export function MapView({
   }, [typeSignature]);
 
   useEffect(() => {
-    const map = mapRef.current;
-    if (map === null) return;
+    const container = containerRef.current;
+    if (container === null) return;
 
-    for (const group of groupsRef.current.values()) {
-      map.removeLayer(group);
-    }
-    groupsRef.current = new Map();
-
-    for (const feature of [...drawable].sort(
-      (a, b) =>
-        drawPriority(a.properties.featureType) - drawPriority(b.properties.featureType)
-    )) {
-      const type = feature.properties.featureType;
-      let group = groupsRef.current.get(type);
-      if (group === undefined) {
-        group = L.layerGroup();
-        groupsRef.current.set(type, group);
-      }
-
-      let layers: FeatureLayers;
-      try {
-        layers = createFeatureLayers(feature, onSelect);
-      } catch (error) {
-        console.error(error);
-        continue;
-      }
-      layers.visual.addTo(group);
-      layers.hit.addTo(group);
-    }
-  }, [drawable, onSelect]);
-
-  useEffect(() => {
-    const map = mapRef.current;
-    if (map === null) return;
-
-    for (const [type, group] of groupsRef.current) {
-      const shouldShow = active.has(type);
-      if (shouldShow && !map.hasLayer(group)) {
-        group.addTo(map);
-      } else if (!shouldShow && map.hasLayer(group)) {
-        map.removeLayer(group);
-      }
-    }
-  }, [active, drawable]);
-
-  useEffect(() => {
-    const overlay = overlayRef.current;
-    if (overlay === null) return;
-
-    overlay.clearLayers();
-    if (selectedKey === null) return;
-
-    const feature = drawable.find((item) => item.properties.naturalKey === selectedKey);
-    if (feature === undefined || feature.geometry === null) return;
-
-    const accent = cssToken(ACCENT_TOKEN);
-
-    if (feature.geometry.type === 'Point') {
-      const [lon, lat] = feature.geometry.coordinates;
-      L.circleMarker([lat, lon], {
-        radius: 22,
-        color: accent,
-        weight: 1.5,
-        fillColor: accent,
-        fillOpacity: 0.12,
-        pane: SELECTION_PANE
-      }).addTo(overlay);
+    let map: maplibregl.Map;
+    try {
+      map = new maplibregl.Map({
+        container,
+        style: STYLE_URL,
+        center: [4.6, 50.7],
+        zoom: 8,
+        maxZoom: 18,
+        attributionControl: false,
+        dragRotate: false,
+        pitchWithRotate: false,
+        touchPitch: false
+      });
+    } catch (error) {
+      console.error('Failed to initialise map', error);
       return;
     }
 
-    const latLngs: [number, number][] = feature.geometry.coordinates.map(([lon, lat]) => [
-      lat,
-      lon
-    ]);
-    const base = lineOptions(feature.properties.featureType, accent);
-    L.polyline(latLngs, {
-      color: accent,
-      weight: (base.weight ?? 1.5) + 1,
-      opacity: 1,
-      pane: SELECTION_PANE
-    }).addTo(overlay);
-  }, [selectedKey, drawable]);
+    mapRef.current = map;
+
+    map.addControl(
+      new maplibregl.AttributionControl({
+        compact: true,
+        customAttribution: '© OpenStreetMap © CARTO'
+      }),
+      'bottom-right'
+    );
+    map.addControl(
+      new maplibregl.NavigationControl({ showCompass: false }),
+      'bottom-right'
+    );
+
+    const handleLoad = () => {
+      try {
+        map.addSource(SOURCE_ID, {
+          type: 'geojson',
+          data: buildFeatureCollection(drawableRef.current)
+        });
+        for (const layer of FEATURE_LAYERS) {
+          map.addLayer(layer);
+        }
+        setTypeVisibility(map, activeRef.current);
+        setSelectionFilter(map, selectedKeyRef.current);
+        setMapReady(true);
+      } catch (error) {
+        console.error('Failed to add feature layers', error);
+      }
+    };
+
+    const handleError = (event: ErrorEvent) => {
+      console.error('MapLibre error', event.error);
+    };
+
+    const handleClick = (event: MapMouseEvent) => {
+      const box: [[number, number], [number, number]] = [
+        [event.point.x - 8, event.point.y - 8],
+        [event.point.x + 8, event.point.y + 8]
+      ];
+      const hits = map.queryRenderedFeatures(box, { layers: CLICKABLE_LAYERS });
+      const naturalKey = hits[0]?.properties?.naturalKey;
+      if (typeof naturalKey === 'string' && naturalKey !== '') {
+        onSelectRef.current(naturalKey);
+      }
+    };
+
+    const handleMouseMove = (event: MapMouseEvent) => {
+      const box: [[number, number], [number, number]] = [
+        [event.point.x - 8, event.point.y - 8],
+        [event.point.x + 8, event.point.y + 8]
+      ];
+      const hits = map.queryRenderedFeatures(box, { layers: CLICKABLE_LAYERS });
+      map.getCanvas().style.cursor = hits.length > 0 ? 'pointer' : '';
+    };
+
+    map.on('load', handleLoad);
+    map.on('error', handleError);
+    map.on('click', handleClick);
+    map.on('mousemove', handleMouseMove);
+
+    const observer = new ResizeObserver(() => {
+      map.resize();
+    });
+    observer.observe(container);
+
+    return () => {
+      observer.disconnect();
+      map.off('load', handleLoad);
+      map.off('error', handleError);
+      map.off('click', handleClick);
+      map.off('mousemove', handleMouseMove);
+      map.remove();
+      mapRef.current = null;
+    };
+  }, []);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !mapReady) return;
+    const source = map.getSource(SOURCE_ID) as GeoJSONSource | undefined;
+    if (source === undefined) return;
+    source.setData(buildFeatureCollection(drawable));
+  }, [drawable, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !mapReady) return;
+    setTypeVisibility(map, active);
+  }, [active, mapReady]);
+
+  useEffect(() => {
+    const map = mapRef.current;
+    if (map === null || !mapReady) return;
+    setSelectionFilter(map, selectedKey);
+  }, [selectedKey, mapReady]);
 
   const handleToggle = useCallback((type: string) => {
     setActive((previous) => {

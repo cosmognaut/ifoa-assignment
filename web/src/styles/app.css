@@ -558,34 +558,41 @@ a {
   background: var(--bg);
 }
 
-.leaflet-container {
-  background: var(--bg);
-  font-family: var(--font-sans);
+/* Map controls */
+
+.maplibregl-ctrl-group {
+  background: rgba(10, 10, 10, 0.85);
+  border: 1px solid var(--border-subtle);
 }
 
-.leaflet-tile-pane {
-  filter: grayscale(1) invert(1) brightness(0.92) contrast(1.05);
+.maplibregl-ctrl-group button {
+  background-color: transparent;
+  border-bottom: 1px solid var(--border-subtle);
 }
 
-.leaflet-control-attribution {
+.maplibregl-ctrl-group button:last-child {
+  border-bottom: 0;
+}
+
+.maplibregl-ctrl-group button:hover {
+  background-color: var(--surface-2);
+}
+
+.maplibregl-ctrl-group button .maplibregl-ctrl-icon,
+.maplibregl-ctrl-attrib-button {
+  filter: invert(1);
+}
+
+.maplibregl-ctrl-attrib,
+.maplibregl-ctrl-attrib.maplibregl-compact {
   background: rgba(0, 0, 0, 0.8);
   color: var(--text-muted);
+  font-family: var(--font-mono);
   font-size: 11px;
 }
 
-.leaflet-control-attribution a {
+.maplibregl-ctrl-attrib a {
   color: var(--text-secondary);
-}
-
-.leaflet-bar a,
-.leaflet-bar a:hover {
-  background: var(--surface-1);
-  color: var(--text-primary);
-  border-bottom-color: var(--border-strong);
-}
-
-.leaflet-bar {
-  border: 1px solid var(--border-strong);
 }
 
 /* Layer panel */

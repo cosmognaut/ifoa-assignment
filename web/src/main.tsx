@@ -1,5 +1,5 @@
 import { createRoot } from 'react-dom/client';
-import 'leaflet/dist/leaflet.css';
+import 'maplibre-gl/dist/maplibre-gl.css';
 import './styles/tokens.css';
 import './styles/app.css';
 import { App } from './App';
