@@ -796,7 +796,7 @@ def cmd_load(args):
 
     # PERSIST TO DATABASE BEFORE ANY EXIT (Fixes S1: quarantine path is always persisted)
     loader.save_publication(pub)
-    loader.save_features(features)
+    deleted_features = loader.save_features(features)
     loader.save_validation_issues(cycle_id, all_issues)
 
     if promote and status == PublicationStatus.PROMOTED:
@@ -804,7 +804,8 @@ def cmd_load(args):
 
     print(f"Successfully persisted to MongoDB:")
     print(f"  • Publication '{pub.cycle_id}' (status: {pub.status.value})")
-    print(f"  • {len(features)} features")
+    stale = f" ({deleted_features} stale rows removed)" if deleted_features else ""
+    print(f"  • {len(features)} features{stale}")
     print(f"  • {len(all_issues)} validation issues")
 
     if promote and not passed:

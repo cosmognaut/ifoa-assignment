@@ -1,5 +1,23 @@
 [
   {
+    "featureKey": "EBCI/OPS/NOISE",
+    "message": "Noise-relevant aircraft types not captured for EBCI: no table in the section",
+    "publicationId": "2026-10-01-current",
+    "rawSnippet": "",
+    "ruleId": "RULE_NOISE_AIRCRAFT_TYPES",
+    "section": "EBCI AD 2.21",
+    "severity": "warning"
+  },
+  {
+    "featureKey": "EBLG/OPS/NOISE",
+    "message": "Noise-relevant aircraft types not captured for EBLG: no table in the section",
+    "publicationId": "2026-10-01-current",
+    "rawSnippet": "",
+    "ruleId": "RULE_NOISE_AIRCRAFT_TYPES",
+    "section": "EBLG AD 2.21",
+    "severity": "warning"
+  },
+  {
     "featureKey": "WPT/GIVOR",
     "message": "Coordinates outside operational FIR bounding box: [6.391389, 48.658611]",
     "publicationId": "2026-10-01-current",

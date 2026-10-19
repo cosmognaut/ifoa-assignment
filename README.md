@@ -112,7 +112,7 @@ Configuration is read from `config/database.yaml` and `config/validation.yaml`, 
 | `GET /api/changes?from=&to=` | Field-level diff rows between two cycles |
 | `GET /api/issues` | Validation issues; filters: `publicationId`, `featureKey`, `severity` |
 
-Of 619 features, 395 carry geometry and 224 (`airspace`, `specialUseArea`) have `geometry: null` by design. `/api/features` therefore returns **all** matching features by default and leaves `geometry` null; map clients pass `withGeometry=true` to receive only the 395 drawable ones. Provenance keys inside `fields` are passed through unmodified (snake_case preserved, `999/UNL` sentinel untouched).
+Of 652 features, 422 carry geometry and 230 (`airspace`, `specialUseArea`, `operationalInfo`) have `geometry: null` by design. `/api/features` therefore returns **all** matching features by default and leaves `geometry` null; map clients pass `withGeometry=true` to receive only the 422 drawable ones. Provenance keys inside `fields` are passed through unmodified (snake_case preserved, `999/UNL` sentinel untouched).
 
 `data/export/<cycle>/` holds a versioned, reviewable snapshot of the extracted dataset — the same camelCase envelope the API serves, `_id` projected away and sorted for byte-identical re-runs — so the data can be inspected without MongoDB, the pipeline or the API running.
 

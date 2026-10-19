@@ -12,7 +12,7 @@ cd api && PORT=3000 npm start &          # http://localhost:3000
 cd web && npm run dev                    # http://localhost:5173
 ```
 
-Check it is alive: `curl -s localhost:3000/api/health` → `{"ok":true,"features":619,...}`.
+Check it is alive: `curl -s localhost:3000/api/health` → `{"ok":true,"features":652,...}`.
 
 ---
 
@@ -23,15 +23,15 @@ Do it in this order. Say the sentence, click, pause, say the next sentence. Nine
 1. **Open `http://localhost:5173`** (Overview is the landing view).
    Say: *"This is the current cycle, `2026-10-01-current`, amendment `AMDT 010/2026`, effective 2026-10-01 — the key is the effective date, not when I downloaded it."*
 2. **Point at the count row** (3 aerodrome, 59 airspace, 20 navaid, 51 route, 6 runway, 12 runwayDirection, 165 specialUseArea, 303 waypoint).
-   Say: *"619 features in this cycle; these counts are computed from the data, not hardcoded."*
+   Say: *"652 features in this cycle; these counts are computed from the data, not hardcoded."*
 3. **Point at the scope line and the current-run panel.**
-   Say: *"Scope is three aerodromes — EBBR, EBCI, EBLG — declared in `config/airports.yaml`. The panel is the publication record: 12 documents ingested, 619 features, 3 issues, 0 errors, 3 warnings, status `promoted`."*
+   Say: *"Scope is three aerodromes — EBBR, EBCI, EBLG — declared in `config/airports.yaml`. The panel is the publication record: 12 documents ingested, 652 features, 5 issues, 0 errors, 5 warnings, status `promoted`."*
 4. **Click `Map`, then point at the layer panel.**
-   Say: *"Six drawable layers, and underneath them the 224 features that have no geometry — 59 airspace and 165 special-use areas — listed but not mappable."*
+   Say: *"Six drawable layers, and underneath them the 230 features that have no geometry — 59 airspace, 165 special-use areas and 6 operational-info records — listed but not mappable."*
 5. **Click any waypoint dot on the map.**
    Say: *"Click selects a feature; the inspector on the right shows the fields and, under them, the provenance — source, section, effective date, source URL and the raw text it was parsed from."*
 6. **Click `Register`.**
-   Say: *"This is the airspace register: 224 rows, the features that exist only as attributes. Filters are generated from the data — 59 airspace, 165 special-use areas."*
+   Say: *"This is the register. The heading still says airspace register, but it lists every feature with no geometry: 230 rows — 59 airspace, 165 special-use areas and the 6 operational-info records. The filter chips are generated from the data."*
 7. **Click `Overview`, then click the `EBBR` card.**
    Say: *"Airport summary for Brussels-National: runway table with declared distances, 11 operational-hours rows, operator contacts, RFFS category. Every value keeps its section and effective date."*
 8. **Back to `Map`, select `WPT/GIVOR`** (the waypoint south-east of the others, near 6.39 E / 48.66 N — scroll-zoom twice if the click misses, or, on the dev server only, run `__aeroMap.jumpTo({center:[6.391389,48.658611],zoom:11})` in the console then click the dot).
@@ -39,7 +39,7 @@ Do it in this order. Say the sentence, click, pause, say the next sentence. Nine
 
 9. **Stay in the terminal and run** `curl -s 'localhost:3000/api/changes?from=2026-10-01-current&to=2026-10-29'`.
    Say: *"And here is the AIRAC comparison. The next edition takes effect on 2026-10-29, and I have it."* The response is exactly one row: `"featureKey":"SUA/EBR05G"`, `"featureType":"specialUseArea"`, `"status":"NEW"`, `"fieldChanges":[]`.
-   Say: *"One change in the whole cycle — a military UAS training zone added to ENR 5.1, 620 features against 619, everything else unchanged."* Then the caution: *"This row is `NEW`, so it carries no field-level changes. The before/after shape — `field`, `previous`, `new`, `section` — is what `MODIFIED` rows produce, and that is exercised by `tests/test_diff_and_quarantine.py`, which mutates a real parse into a second cycle and covers all four buckets."*
+   Say: *"One change in the whole cycle — a military UAS training zone added to ENR 5.1, 653 features against 652, everything else unchanged."* Then the caution: *"This row is `NEW`, so it carries no field-level changes. The before/after shape — `field`, `previous`, `new`, `section` — is what `MODIFIED` rows produce, and that is exercised by `tests/test_diff_and_quarantine.py`, which mutates a real parse into a second cycle and covers all four buckets."*
 
 Stop talking. Ask what they want to see.
 
@@ -108,7 +108,7 @@ CARTO's raster endpoints return one byte-identical placeholder image for every t
 Airspace boundaries are published as legal prose — arcs and radii in `SUA/EBR01`, `along the Belgian-German border` in `SUA/EBD29`. A bounding box or convex hull around a prohibited area is not an approximation of the legal boundary — it is a *different* boundary. The attributes and the verbatim prose (`fields.lateralLimitsRaw`) are extracted; the geometry stays null and the gap is documented (ADR 16).
 
 **2.3 Why does `/api/features` return null geometries by default, with `withGeometry` opt-in?**
-Because both consumers need different halves of the same set: the map wants the 395 drawable features, the register wants the 224 that have no geometry. Defaulting to "only drawable" would make the airspace register impossible to build from the API.
+Because both consumers need different halves of the same set: the map wants the 422 drawable features, the register wants the 230 that have no geometry. Defaulting to "only drawable" would make the airspace register impossible to build from the API.
 
 **2.4 Why one shell with views, not three pages?**
 The top bar, the 400 px inspector and the provenance block are identical across Overview, Map and Register. Three pages would mean three copies of the selection state and three copies of the provenance renderer.
@@ -147,7 +147,7 @@ No. AD 2.19 is declared in `config/sections.yaml` with a table locator, but no p
 Not parsed. AD 2.14 has no entry in `config/sections.yaml` at all. Same shape of decision: the console's runway table shows declared distances and surface, so lighting and slope were not on the path. Closing it is a section spec (headers, converters, units) plus a parser and fixtures.
 
 **3.3 "SID/STAR/procedure metadata?"**
-Absent. `procedureMeta` and `operationalInfo` exist as `FeatureType` members with no producer; the eight families that are populated are aerodrome, runway, runwayDirection, navaid, waypoint, route, airspace and specialUseArea. The waypoint data does carry the AIP's `ATS Routes` text (e.g. `STAR ELLX` for `WPT/GIVOR`), but that is a string on a waypoint, not a procedure model. Closing it needs a leg/segment model and new section specs — a real design task, not an afternoon.
+Procedures are absent; `operationalInfo` is no longer. `procedureMeta` is a `FeatureType` member with no producer — there is no SID/STAR/approach leg model, only the AIP's `ATS Routes` text on each waypoint. `operationalInfo` is now populated: AD 2.20 and AD 2.21 produce six features (`EBBR/OPS/NOISE`, `EBBR/OPS/LOCAL-REGS` and the same pair for EBCI and EBLG), which is what makes the populated families nine: aerodrome, runway, runwayDirection, navaid, waypoint, route, airspace, specialUseArea, operationalInfo. The waypoint data does carry the AIP's `ATS Routes` text (e.g. `STAR ELLX` for `WPT/GIVOR`), but that is a string on a waypoint, not a procedure model. Closing it needs a leg/segment model and new section specs — a real design task, not an afternoon.
 
 **3.4 "NOTAM and AIP SUP?"**
 Modelled, not ingested. `sourceClass` has `SUP` and `NOTAM` values; nothing fetches those feeds, and there is no endpoint for them in `config/crawler.yaml`. They are a different publication surface from the 28-day AIP, which is why they were excluded rather than half-built.
@@ -156,10 +156,10 @@ Modelled, not ingested. `sourceClass` has `SUP` and `NOTAM` values; nothing fetc
 They do not exist. All 224 airspace and special-use-area features carry `geometry: null` and the legal prose is preserved verbatim. This is deliberate (ADR 16). Closing it is a geodesic interpreter — arcs, circle sampling, sovereign border shapefiles — plus a fixture set of published boundaries to validate against. The raw text is stored precisely so that work needs no re-fetch.
 
 **3.6 "Has the diff run against two real cycles?"**
-Yes — once, against the `2026-10-29` preview, and the answer is small. The preview came from the publisher's official offline package: the HTML portal is refused by `robots.txt`, so 12 documents were pulled out of the 1.57 GB `eAIP_Package.zip` with HTTP range requests and ingested through `ingest fetch --cycle 2026-10-29 --from-dir` (12 rows, `fetched_from_dir`, verify PASSED). `diff --from 2026-10-01-current --to 2026-10-29` then reported 620 features versus 619: **NEW 1, MODIFIED 0, DELETED 0, UNCHANGED 619**, 0.0 % disappeared — the single change is `SUA/EBR05G`, a military UAS training zone added to ENR 5.1. The preview parsed to 0 errors and the same 3 warnings as the current cycle. Caveat worth saying yourself: one new feature is a thin sample, so the NEW/MODIFIED/DELETED classification beyond it rests on `tests/test_diff_and_quarantine.py`, and a preview may still be amended before it takes effect.
+Yes — once, against the `2026-10-29` preview, and the answer is small. The preview came from the publisher's official offline package: the HTML portal is refused by `robots.txt`, so 12 documents were pulled out of the 1.57 GB `eAIP_Package.zip` with HTTP range requests and ingested through `ingest fetch --cycle 2026-10-29 --from-dir` (12 rows, `fetched_from_dir`, verify PASSED). `diff --from 2026-10-01-current --to 2026-10-29` then reported 653 features versus 652: **NEW 1, MODIFIED 0, DELETED 0, UNCHANGED 652**, 0.0 % disappeared — the single change is `SUA/EBR05G`, a military UAS training zone added to ENR 5.1. The preview parsed to 0 errors and the same 5 warnings as the current cycle. Caveat worth saying yourself: one new feature is a thin sample, so the NEW/MODIFIED/DELETED classification beyond it rests on `tests/test_diff_and_quarantine.py`, and a preview may still be amended before it takes effect.
 
 **3.7 "Is `effectiveTo` populated?"**
-No — all 619 features are `null`. The supersession logic exists (`MongoLoader.promote_publication` back-fills `effectiveTo` on the previously promoted cycle), but it has never run: the 2026-10-29 preview was diffed against the current cycle, never loaded or promoted. Do not claim bitemporal queries work; the schema is bitemporal, the data is not yet.
+No — all 652 features are `null`. The supersession logic exists (`MongoLoader.promote_publication` back-fills `effectiveTo` on the previously promoted cycle), but it has never run: the 2026-10-29 preview was diffed against the current cycle, never loaded or promoted. Do not claim bitemporal queries work; the schema is bitemporal, the data is not yet.
 
 **3.8 "Lower ATS routes, ENR 3.1?"**
 Nothing to parse in this cycle: the published document states `NIL`, and the spec declares no fields. Only upper routes (ENR 3.2, 51 `route` features) exist in the dataset.
@@ -178,15 +178,15 @@ Say the left thing and you lose the room; say the right thing and you look like 
 
 | Do not say | Say instead |
 |---|---|
-| "The map shows the airspace." | "The map shows point and line features — aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 224 features that have no geometry." |
+| "The map shows the airspace." | "The map shows point and line features — aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 230 features that have no geometry." |
 | "Here's `/api/changes`" — unfiltered, or with the old `2026-10-01` → `2026-10-01-current` pair. | Show the real pair: `curl 'localhost:3000/api/changes?from=2026-10-01-current&to=2026-10-29'` → one `NEW` row for `SUA/EBR05G`. Never show the 321-row `2026-10-01` → `2026-10-01-current` pair: that is the cycle-id defect in 1.8, not a change record. |
-| "There are about 70 tests." | "87: 43 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 18 web (Vitest + jsdom, hermetic)." |
+| "There are about 70 tests." | "107: 63 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 18 web (Vitest + jsdom, hermetic)." |
 | "I downloaded the 1.57 GB package." | "No — I pulled 12 documents out of it with HTTP range requests (5.35 MB total) and ingested them with `--from-dir`. Downloading the whole archive to parse twelve files would be the wrong trade." |
 | "Let me re-fetch it live so you can see." | "A live fetch is refused — `robots.txt` disallows automated access — so there is nothing to watch. The committed snapshot in `data/raw/2026-10-01-current/` is what the API and the console are serving." |
 | "The pipeline runs on a schedule." | "It does not. `check-updates` is a command a human runs; there is no cron entry and no CI config — `.github/` does not exist in the repo." |
 | "The system is live for users." | "Nothing is live: MongoDB, the Node API and Vite all run locally on 27017 / 3000 / 5173, and nothing starts them for you. The dataset is also committed as `data/export/2026-10-01-current/` so it can be inspected with nothing running at all." |
-| "I wrote every line." | "I directed an LLM to write most of the code and I built the verification around it: the SHA-256 manifest chain, the golden-value tests transcribed from the real AIP HTML, the declarative validation rules, and 87 tests I can run in one command. Where my prose and the code disagreed, I fixed the prose — every number in the docs carries the command that produced it." |
-| "The frontend has 619 features on the map." | "395 are drawable; 224 have no geometry by design." |
+| "I wrote every line." | "I directed an LLM to write most of the code and I built the verification around it: the SHA-256 manifest chain, the golden-value tests transcribed from the real AIP HTML, the declarative validation rules, and 107 tests I can run in one command. Where my prose and the code disagreed, I fixed the prose — every number in the docs carries the command that produced it." |
+| "The frontend has 652 features on the map." | "422 are drawable; 230 have no geometry by design." |
 | "The diff shows what changed since last cycle." | "It does — I have a real change record for `2026-10-01-current` → `2026-10-29`: one `NEW` feature, everything else `UNCHANGED`, because that preview is the only second edition available. The full four-bucket shape is covered by `tests/test_diff_and_quarantine.py`." |
 
 For the LLM answer, have one concrete example ready: the coordinate display. The inspector used to print `5.317778, 50.770833` (longitude first, as stored) and a reviewer read it as a latitude. The fix was latitude-first with hemisphere suffixes plus the AIP's raw DMS string, and a test that asserts the old order is *absent* (`web/src/test/fieldRow.test.tsx`). Long-form reasoning: `ARCHITECTURE.md` "Why these choices", plus `DECISION_LOG.md` ADRs 6, 9, 10, 16, 26.
@@ -197,21 +197,21 @@ For the LLM answer, have one concrete example ready: the coordinate display. The
 
 | Fact | Value |
 |---|---|
-| Features in the cycle | **619** |
-| By type | waypoint 303 · specialUseArea 165 · airspace 59 · route 51 · navaid 20 · runwayDirection 12 · runway 6 · aerodrome 3 |
-| Null geometry | **224** (59 airspace + 165 specialUseArea) |
-| Drawable (mappable) | **395** |
+| Features in the cycle | **652** |
+| By type | waypoint 303 · specialUseArea 165 · airspace 59 · route 51 · navaid 47 · runwayDirection 12 · runway 6 · operationalInfo 6 · aerodrome 3 |
+| Null geometry | **230** (59 airspace + 165 specialUseArea + 6 operationalInfo) |
+| Drawable (mappable) | **422** |
 | Documents ingested per cycle | **12** (12 lines in `manifest.jsonl`) |
 | Cycle id / amendment / effective | `2026-10-01-current` · `AMDT 010/2026` · 2026-10-01 · status `promoted` |
-| Validation issues | **3** — 1 `RULE_OPERATIONAL_BBOX` (WPT/GIVOR), 2 `RULE_UNRESOLVED_WAYPOINT` (RTE/L179, RTE/Z310); 0 errors |
-| Tests | **87** = 43 pipeline + 26 API + 18 web (4 files) |
+| Validation issues | **5** — 1 `RULE_OPERATIONAL_BBOX` (WPT/GIVOR), 2 `RULE_UNRESOLVED_WAYPOINT` (RTE/L179, RTE/Z310), 2 `RULE_NOISE_AIRCRAFT_TYPES` (EBCI, EBLG: no aircraft-type table); 0 errors |
+| Tests | **107** = 63 pipeline + 26 API + 18 web (4 files) |
 | Web entry chunk | 252.11 kB, **77.69 kB gzip**; map chunk 1,061.45 kB (290.08 kB gzip) |
 | API endpoints | **8** read-only (7 `app.get('/api/…')` routes + 1 regex route for slash-bearing natural keys) |
 | ADRs | **27** (`DECISION_LOG.md`) |
 | Known limits documented | **9** (`ARCHITECTURE.md` → Known limits) |
-| Register rows | 224 (all airspace + special-use areas) |
+| Register rows | 230 (airspace 59 + specialUseArea 165 + operationalInfo 6 — every feature with `geometry: null`) |
 | Promotion gate | 0 errors · 100 warnings · 0.0 % disappeared runways · 5.0 % disappeared features |
-| Preview cycle `2026-10-29` | 12 documents (5,354,094 bytes) from the offline package · 620 features · `diff` vs current: NEW 1, MODIFIED 0, DELETED 0, UNCHANGED 619 |
+| Preview cycle `2026-10-29` | 12 documents (5,354,094 bytes) from the offline package · 653 features · `diff` vs current: NEW 1, MODIFIED 0, DELETED 0, UNCHANGED 652 |
 | Live crawl | **refused**: `robots.txt` is `User-Agent: *` / `Disallow: /`; 12 documents enumerated, 0 bytes fetched |
 
 Commands that produce the above, if asked to show your work:

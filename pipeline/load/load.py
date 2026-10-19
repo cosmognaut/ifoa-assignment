@@ -56,10 +56,30 @@ class MongoLoader:
         doc = pub.model_dump(mode="json", by_alias=True)
         self.publications.replace_one({"cycleId": pub.cycle_id}, doc, upsert=True)
 
-    def save_features(self, features: List[Feature]):
+    def save_features(self, features: List[Feature], publication_id: Optional[str] = None) -> int:
+        """Upsert every feature, then reconcile: drop rows the parse no longer produces.
+
+        Upsert-only persistence silently keeps whatever a previous parser run wrote, so a
+        changed spec (a renamed natural key, a section that stopped yielding a feature)
+        leaves orphans behind and the collection stops matching the parse. After the bulk
+        upsert, every natural key absent from the incoming set is deleted *for the
+        publication ids in this call only*, so a multi-publication call can never delete
+        across cycles.
+
+        An empty `features` list is a no-op unless the caller names the publication
+        explicitly (`publication_id=`), in which case it means "this cycle now has no
+        features" and every row for that publication is removed. The no-op default is
+        deliberate: a caller that forgot to pass features must not wipe a cycle.
+
+        Returns the number of deleted rows so the caller can report it.
+        """
         if not features:
-            return
+            if publication_id is not None:
+                return self.features.delete_many({"publicationId": publication_id}).deleted_count
+            return 0
+
         ops = []
+        by_publication: Dict[str, set] = {}
         for feat in features:
             doc = feat.model_dump(mode="json", by_alias=True)
             ops.append(
@@ -69,8 +89,18 @@ class MongoLoader:
                     upsert=True
                 )
             )
+            by_publication.setdefault(feat.publication_id, set()).add(feat.natural_key)
+
         if ops:
             self.features.bulk_write(ops, ordered=False)
+
+        deleted = 0
+        for pub_id, keys in by_publication.items():
+            result = self.features.delete_many(
+                {"publicationId": pub_id, "naturalKey": {"$nin": sorted(keys)}}
+            )
+            deleted += result.deleted_count
+        return deleted
 
     def save_validation_issues(self, publication_id: str, issues: List[ValidationIssue]):
         self.validation_issues.delete_many({"publicationId": publication_id})
