@@ -14,7 +14,7 @@ from pipeline.models.feature import (
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.utils.hash_utils import compute_content_hash
 from pipeline.parse.converters import CONVERTER_REGISTRY
-from pipeline.config import load_crawler_config, load_sections_config
+from pipeline.config import load_crawler_config, load_sections_config, load_validation_config
 
 PARSER_VERSION = "1.0"
 
@@ -30,6 +30,11 @@ class RouteParser:
         sections_list = sections_cfg.get("sections", [])
         self.spec_31 = next((s for s in sections_list if s["id"] == "ENR-3.1"), {})
         self.spec_32 = next((s for s in sections_list if s["id"] == "ENR-3.2"), {})
+
+        val_cfg = load_validation_config()
+        rules_cfg = val_cfg.get("rules", {})
+        self.require_resolved_waypoints = bool(rules_cfg.get("require_resolved_waypoints", True))
+        self.require_limit_units = bool(rules_cfg.get("require_limit_units", True))
 
     def parse_routes_document(
         self,
@@ -124,17 +129,17 @@ class RouteParser:
                     elif target_nav_key in known_navs:
                         resolved_key = target_nav_key
                     else:
-                        # Record text and emit RULE_UNRESOLVED_WAYPOINT
                         resolved_key = target_wpt_key
-                        issues.append(ValidationIssue(
-                            publication_id=self.cycle_id,
-                            severity=IssueSeverity.ERROR,
-                            rule_id="RULE_UNRESOLVED_WAYPOINT",
-                            feature_key=nat_key,
-                            section=sec_label,
-                            message=f"Route {route_desig} references unresolved waypoint '{point_id}'",
-                            raw_snippet=point_id
-                        ))
+                        if self.require_resolved_waypoints:
+                            issues.append(ValidationIssue(
+                                publication_id=self.cycle_id,
+                                severity=IssueSeverity.ERROR,
+                                rule_id="RULE_UNRESOLVED_WAYPOINT",
+                                feature_key=nat_key,
+                                section=sec_label,
+                                message=f"Route {route_desig} references unresolved waypoint '{point_id}'",
+                                raw_snippet=point_id
+                            ))
 
                     waypoint_seq.append(resolved_key)
 
@@ -145,7 +150,7 @@ class RouteParser:
                             u_lim, _ = CONVERTER_REGISTRY["vertical_limit"](c)
                             if u_lim and u_lim.get("value") is not None:
                                 upper_limit_parsed = u_lim
-                                if u_lim.get("unit") is None or u_lim.get("reference") is None:
+                                if self.require_limit_units and (u_lim.get("unit") is None or u_lim.get("reference") is None):
                                     issues.append(ValidationIssue(
                                         publication_id=self.cycle_id,
                                         severity=IssueSeverity.WARNING,
@@ -159,7 +164,7 @@ class RouteParser:
                             l_lim, _ = CONVERTER_REGISTRY["vertical_limit"](c)
                             if l_lim and l_lim.get("value") is not None and l_lim != upper_limit_parsed:
                                 lower_limit_parsed = l_lim
-                                if l_lim.get("unit") is None or l_lim.get("reference") is None:
+                                if self.require_limit_units and (l_lim.get("unit") is None or l_lim.get("reference") is None):
                                     issues.append(ValidationIssue(
                                         publication_id=self.cycle_id,
                                         severity=IssueSeverity.WARNING,

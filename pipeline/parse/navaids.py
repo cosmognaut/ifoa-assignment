@@ -1,7 +1,6 @@
 """
 Declarative parser for Radio Navigation Aids:
 - ENR 4.1 Radio Navigation Aids - En-Route (VOR, DME, TACAN, NDB)
-- AD 2.19 Radio Navigation and Landing Aids (ILS, LOC, GP, DME)
 """
 import re
 from typing import List, Tuple, Dict, Any, Optional
@@ -30,15 +29,12 @@ class NavaidParser:
         self.type_tokens = sections_cfg.get("navaid_type_tokens", {})
         sections_list = sections_cfg.get("sections", [])
         self.spec_enr = next((s for s in sections_list if s["id"] == "ENR-4.1"), {})
-        self.spec_ad = next((s for s in sections_list if s["id"] == "AD-2.19"), {})
 
-        # Regex for frequencies from sections config
         regex_cfg = sections_cfg.get("converters_regex", {})
         self.re_mhz = re.compile(regex_cfg.get("frequency_mhz", "(\\d+(?:\\.\\d+)?)\\s*MHZ"))
         self.re_ch = re.compile(regex_cfg.get("frequency_ch", "CH\\s*(\\d+)[XY]?"))
 
     def derive_navaid_type(self, text: str) -> str:
-        """Derives navaidType from config word-list in sections.yaml (zero hardcoded literals)."""
         upper = text.upper()
         for token_key, token_val in self.type_tokens.items():
             if token_key != "default" and token_key in upper:
@@ -101,7 +97,9 @@ class NavaidParser:
             ))
             return features, issues
 
-        # Real header: Name of station | ID | Frequency (CH) | Hours | Coordinates | DME antenna ELEV | Remarks
+        # Track features by natural key to merge collocated navaid facilities (e.g. VOR + DME on same ID)
+        navaid_map: Dict[str, Feature] = {}
+
         for tr in table.find_all("tr"):
             cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
             if len(cells) < 6:
@@ -115,8 +113,36 @@ class NavaidParser:
             dme_elev_raw = cells[5].strip() if len(cells) > 5 else ""
             remarks_raw = cells[6].strip() if len(cells) > 6 else ""
 
-            # Skip header and numbering rows (ICAO navaid designators are 2-4 uppercase letters)
+            # Skip header and numbering rows (ICAO navaid IDs are 2-4 uppercase letters)
             if nav_id.upper() == "ID" or not re.match(r"^[A-Z]{2,4}$", nav_id):
+                continue
+
+            nat_key = f"NAV/{nav_id}"
+
+            # If station already exists, merge collocated channel/elevation into it
+            if nat_key in navaid_map:
+                existing_feat = navaid_map[nat_key]
+                num_freq, freq_unit = self.parse_frequency(freq_raw)
+                if num_freq and not existing_feat.fields.get("frequency"):
+                    existing_feat.fields["frequency"] = FeatureField(
+                        value=num_freq, unit=freq_unit, source=self.publisher_name,
+                        section="ENR 4.1", effective_date=self.effective_date,
+                        retrieved_at=retrieved_at, source_url=source_url,
+                        parser_version=PARSER_VERSION, raw_text=freq_raw
+                    )
+                if dme_elev_raw and dme_elev_raw.upper() != "NIL" and not existing_feat.fields.get("dmeElevation"):
+                    dme_elev_val, _ = CONVERTER_REGISTRY["elevation"](dme_elev_raw)
+                    if dme_elev_val is not None:
+                        existing_feat.fields["dmeElevation"] = FeatureField(
+                            value=dme_elev_val, unit="FT", source=self.publisher_name,
+                            section="ENR 4.1", effective_date=self.effective_date,
+                            retrieved_at=retrieved_at, source_url=source_url,
+                            parser_version=PARSER_VERSION, raw_text=dme_elev_raw
+                        )
+                existing_feat.content_hash = compute_content_hash(
+                    existing_feat.fields,
+                    existing_feat.geometry.model_dump() if existing_feat.geometry else None
+                )
                 continue
 
             parsed_coords, _ = CONVERTER_REGISTRY["coordinates"](coord_raw)
@@ -125,7 +151,7 @@ class NavaidParser:
                     publication_id=self.cycle_id,
                     severity=IssueSeverity.ERROR,
                     rule_id="RULE_COORDINATE_FORMAT",
-                    feature_key=f"NAV/{nav_id}",
+                    feature_key=nat_key,
                     section="ENR 4.1",
                     message=f"Failed to parse DMS coordinates '{coord_raw}' for navaid {nav_id}",
                     raw_snippet=coord_raw
@@ -200,7 +226,7 @@ class NavaidParser:
 
             feat = Feature(
                 feature_type=FeatureType.NAVAID,
-                natural_key=f"NAV/{nav_id}",
+                natural_key=nat_key,
                 parent_key=None,
                 publication_id=self.cycle_id,
                 effective_from=self.effective_date,
@@ -211,6 +237,7 @@ class NavaidParser:
                 content_hash=content_hash,
                 fields=fields
             )
-            features.append(feat)
+            navaid_map[nat_key] = feat
 
+        features = list(navaid_map.values())
         return features, issues

@@ -188,15 +188,17 @@ class AirspaceParser:
 
         sec_label = section_id.replace("-", " ")
         tables = div.find_all("table")
+        seen_keys: set = set()
 
         for idx, table in enumerate(tables):
             cap = table.find("caption")
             raw_title = cap.get_text(" ", strip=True) if cap else f"SUA {idx+1}"
             clean_title = re.sub(r"\s*\(\d+\)", "", raw_title).strip()
-            # Extract designation e.g. 'EBR01' from 'EBR01 - BRUSSELS CITY' or use clean_title
-            m_desig = re.match(r"^([A-Z0-9/]+)", clean_title)
-            desig_code = m_desig.group(1) if m_desig else clean_title
+            desig_code = clean_title.split(" - ")[0].strip().replace(" ", "_")
             nat_key = f"SUA/{desig_code}"
+            if nat_key in seen_keys:
+                nat_key = f"SUA/{desig_code}_{idx+1}"
+            seen_keys.add(nat_key)
 
             lateral_raw = ""
             vertical_raw = ""
