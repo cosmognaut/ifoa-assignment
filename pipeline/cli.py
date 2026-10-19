@@ -24,6 +24,7 @@ from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.models.feature import Feature
 from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
+from pipeline.parse.airports import AirportParser
 from pipeline.validate.rules import ValidationEngine
 from pipeline.diff.engine import DiffEngine, DiffReport
 from pipeline.load.load import MongoLoader
@@ -279,8 +280,33 @@ def _parse_waypoints(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], Lis
         retrieved_at=retrieved_at
     )
 
+def _parse_airport_summary(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[Optional[Feature], List[ValidationIssue]]:
+    sections_cfg = load_sections_config()
+    ad22_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.2"), None)
+    template = ad22_spec["file_template"] if ad22_spec else "EB-AD-2.{icao}-en-GB.html"
+    doc_path = cache_dir / cycle_id / template.format(icao=icao)
+    if not doc_path.exists():
+        return None, []
+
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+    doc_meta = next((item for item in manifest_items if item.section_id == f"AD-2.{icao}"), None)
+    source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+    retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    effective_date = meta.get("effective_date", cycle_id[:10])
+
+    parser = AirportParser(cycle_id=cycle_id, effective_date=effective_date)
+    return parser.parse_airport_summary(
+        icao=icao,
+        html_content=doc_path.read_text(encoding="utf-8"),
+        document_filename=doc_path.name,
+        source_url=source_url,
+        retrieved_at=retrieved_at
+    )
+
 def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[ValidationIssue]]:
-    """Single comprehensive parse pass: parses all configured airports and global waypoints."""
+    """Single comprehensive parse pass: parses all configured airports, runway networks, and global waypoints."""
     cache_dir = _cache_dir(args)
     explicit_icao = getattr(args, "icao", None) if args else None
     target_icaos = [explicit_icao] if explicit_icao else _target_icaos(args)
@@ -293,6 +319,11 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
             feats, issues = _parse_airport_runways(cycle_id, icao, cache_dir)
             all_features.extend(feats)
             all_issues.extend(issues)
+
+            ap_feat, ap_issues = _parse_airport_summary(cycle_id, icao, cache_dir)
+            if ap_feat:
+                all_features.append(ap_feat)
+            all_issues.extend(ap_issues)
         except FileNotFoundError as e:
             if explicit_icao:
                 raise e

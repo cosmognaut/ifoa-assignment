@@ -15,6 +15,7 @@ class FieldChange(BaseModel):
     field: str
     previous: Any
     new: Any
+    section: Optional[str] = None
 
 class Change(BaseModel):
     model_config = ConfigDict(alias_generator=to_camel, populate_by_name=True)

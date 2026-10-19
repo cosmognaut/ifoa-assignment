@@ -116,7 +116,7 @@ class RunwayParser:
         issues: List[ValidationIssue] = []
 
         soup = BeautifulSoup(html_content, "html.parser")
-        sec_12_label = f"{icao} {self.spec_12['id']}"
+        sec_12_label = f"{icao} {self.spec_12['id'].replace('-', ' ')}"
 
         # 1. Locate AD 2.12 Runway Physical Characteristics
         div_12 = self._locate_section_div(soup, icao, self.spec_12)
@@ -155,13 +155,23 @@ class RunwayParser:
         declared_distances: Dict[str, Dict[str, FeatureField]] = {}
         if table_13 and self.spec_13:
             fields_13_cfg = self.spec_13.get("fields", {})
-            sec_13_label = f"{icao} {self.spec_13['id']}"
+            sec_13_label = f"{icao} {self.spec_13['id'].replace('-', ' ')}"
+
+            # Locate designator column dynamically by header text
+            desig_col_idx = 0
+            for header_tr in table_13.find_all("tr")[:2]:
+                header_cells = header_tr.find_all(["th", "td"])
+                for idx, cell in enumerate(header_cells):
+                    txt = cell.get_text().lower()
+                    if "designator" in txt or "rwy" in txt:
+                        desig_col_idx = idx
+                        break
 
             for tr in table_13.find_all("tr"):
                 cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
-                if not cells:
+                if len(cells) <= desig_col_idx:
                     continue
-                desig_val = cells[0]
+                desig_val = cells[desig_col_idx]
                 if not self.rwy_regex.match(desig_val):
                     continue
 

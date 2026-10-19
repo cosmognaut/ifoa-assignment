@@ -78,6 +78,17 @@ sections:
     anchor_template: "{icao}-AD-2.2"
     heading_pattern: "AD 2.2"
     target_type: "aerodrome"
+    fields:
+      arpCoordinates:
+        header_pattern: "arp coordinates"
+        converter: "coordinates"
+      elevation:
+        header_pattern: "elevation"
+        converter: "elevation"
+        unit: "FT"
+      magneticVariation:
+        header_pattern: "magnetic variation"
+        converter: "text"
 
   - id: "AD-2.3"
     name: "Operational Hours"
@@ -88,6 +99,16 @@ sections:
     anchor_template: "{icao}-AD-2.3"
     heading_pattern: "AD 2.3"
     target_type: "operationalInfo"
+    fields:
+      hoursOperator:
+        header_pattern: "ad operator"
+        converter: "text"
+      hoursCustoms:
+        header_pattern: "customs"
+        converter: "text"
+      hoursATS:
+        header_pattern: "ats"
+        converter: "text"
 
   - id: "AD-2.6"
     name: "Rescue and Fire Fighting Services"
@@ -98,6 +119,13 @@ sections:
     anchor_template: "{icao}-AD-2.6"
     heading_pattern: "AD 2.6"
     target_type: "operationalInfo"
+    fields:
+      rffsCategory:
+        header_pattern: "aerodrome category for fire fighting"
+        converter: "text"
+      rffsEquipment:
+        header_pattern: "rescue equipment"
+        converter: "text"
 
   - id: "AD-2.12"
     name: "Runway Physical Characteristics"
@@ -178,6 +206,9 @@ sections:
         header_pattern: "lda"
         converter: "distance"
         unit: "M"
+      remarks:
+        header_pattern: "rmk"
+        converter: "text"
 
   - id: "AD-2.19"
     name: "Radio Navigation and Landing Aids"

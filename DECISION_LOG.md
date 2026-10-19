@@ -156,12 +156,15 @@ This document records the architectural, data modeling, and engineering decision
 
 ---
 
-## 14. Bitemporal History & `effective_to` Supersession
+---
 
-* **Context**: The schema models `effective_from` and `effective_to` ("null if active"), but features were previously inserted with `effective_to: None` and never closed when new cycles arrived.
-* **Decision**: In `MongoLoader.promote_publication(cycle_id, effective_date)`:
-  1. Locate the previously promoted publication.
-  2. On all active features belonging to that previous cycle (`effectiveTo: None`), atomically update `effectiveTo = new_publication.effective_date`.
-  3. Mark the new publication as promoted.
+## 15. The AD 2.2 / 2.3 / 2.6 Key-Value Parser & Operational Layer Synthesis
+
+* **Context**: The map and airport summary view require an Airports layer (Point features with ARP coordinates) and operational details (elevation, magnetic variation, H24 operating hours, and RFFS fire-fighting categories). Hardcoding these in the frontend violates the non-negotiable rule.
+* **Decision**: Implement `pipeline/parse/airports.py` (`AirportParser`):
+  1. *AD 2.2*: Parses Aerodrome Reference Point (ARP) coordinates, field elevation AMSL, and magnetic variation. The ARP coordinates become the GeoJSON `Point` geometry of the `aerodrome` feature.
+  2. *AD 2.3*: Parses operational hours per authority (Operator, Customs, ATS, Fuel, Handling), capturing the baseline for the canonical "H24 changing to textual restrictions" diff detection.
+  3. *AD 2.6*: Parses Rescue and Fire Fighting Services (RFFS) categories (`CAT 10` for Brussels/Liège, `CAT 7` for Charleroi).
 * **Reasoning**:
-  - Fully closes the bitemporal model. Any consumer can query: *"What was the active declared distance for Runway 01 on 2026-10-15?"* by querying `effectiveFrom <= date AND (effectiveTo > date OR effectiveTo IS NULL)`.
+  - Turns 2 layers (`runway`, `waypoint`) into 3 active layers (`aerodrome`, `runway`, `waypoint`).
+  - Supplies 100% of the data required for the Airport Operational View directly from official AIP source tables with complete provenance.

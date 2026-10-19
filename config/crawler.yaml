@@ -1,6 +1,7 @@
 # crawler and source ingestion config
 crawler:
-  user_agent_format:  "Mozilla/5.0 (Windows NT 10.0; Win64; x64; contact: me@ishu.foo) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36"
+  contact_email: "ishuman2006@gmail.com"
+  user_agent_format: "Mozilla/5.0 (Windows NT 10.0; Win64; x64; contact: {contact_email}) AppleWebKit/537.36 Chrome/130.0.0.0 Safari/537.36"
   rate_limit_seconds: 1
   timeout_seconds: 30
   cache_dir: "data/raw"
@@ -19,8 +20,8 @@ crawler:
     # Order matters: it is the order cycles are probed, and the order used to
     # disambiguate two editions that share an effective date.
     cycle_folders:
-      previous: "eAIP_Previous"
       current: "eAIP_Main"
+      previous: "eAIP_Previous"
       preview: "eAIP_Next"
 
     html_subdir: "html"

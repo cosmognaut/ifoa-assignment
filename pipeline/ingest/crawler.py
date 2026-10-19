@@ -21,7 +21,7 @@ class PoliteCrawler:
     def __init__(self, config_path: str = "config/crawler.yaml", cache_dir: Optional[Path] = None):
         self.cfg = load_crawler_config(config_path)
 
-        contact_email = self.cfg.get("contact_email", "ops@ifoa-aero.be")
+        contact_email = require_str(self.cfg, "contact_email", config_path)
         user_agent_format = require_str(self.cfg, "user_agent_format", config_path)
         self.user_agent = user_agent_format.format(contact_email=contact_email)
 

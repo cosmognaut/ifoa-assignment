@@ -40,6 +40,7 @@ class WaypointParser:
 
         soup = BeautifulSoup(html_content, "html.parser")
         anchor = self.spec.get("anchor", "ENR-4.4")
+        sec_label = self.spec.get("id", "ENR 4.4").replace("-", " ")
         div = soup.find(id=anchor)
         if not div:
             for h in soup.find_all(["h2", "h3", "h4", "h5"]):
@@ -53,7 +54,7 @@ class WaypointParser:
                 severity=IssueSeverity.ERROR,
                 rule_id="RULE_MISSING_SECTION",
                 feature_key=None,
-                section="ENR-4.4",
+                section=sec_label,
                 message="Missing section ENR 4.4 Significant Points in document",
                 raw_snippet=""
             ))
@@ -66,7 +67,7 @@ class WaypointParser:
                 severity=IssueSeverity.ERROR,
                 rule_id="RULE_MISSING_TABLE",
                 feature_key=None,
-                section="ENR-4.4",
+                section=sec_label,
                 message="Table not found in section ENR 4.4",
                 raw_snippet=""
             ))
@@ -91,7 +92,7 @@ class WaypointParser:
                     severity=IssueSeverity.ERROR,
                     rule_id="RULE_COORDINATE_FORMAT",
                     feature_key=f"WPT/{designator}",
-                    section="ENR-4.4",
+                    section=sec_label,
                     message=f"Failed to parse DMS coordinates '{coord_raw}' for waypoint {designator}",
                     raw_snippet=coord_raw
                 ))
@@ -106,7 +107,7 @@ class WaypointParser:
                     value=designator,
                     unit=None,
                     source=self.publisher_name,
-                    section="ENR-4.4",
+                    section=sec_label,
                     effective_date=self.effective_date,
                     retrieved_at=retrieved_at,
                     source_url=source_url,
@@ -117,7 +118,7 @@ class WaypointParser:
                     value=list(parsed_coords),
                     unit=None,
                     source=self.publisher_name,
-                    section="ENR-4.4",
+                    section=sec_label,
                     effective_date=self.effective_date,
                     retrieved_at=retrieved_at,
                     source_url=source_url,
@@ -130,7 +131,7 @@ class WaypointParser:
                     value=combined_routes,
                     unit=None,
                     source=self.publisher_name,
-                    section="ENR-4.4",
+                    section=sec_label,
                     effective_date=self.effective_date,
                     retrieved_at=retrieved_at,
                     source_url=source_url,

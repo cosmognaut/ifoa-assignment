@@ -67,10 +67,12 @@ class DiffEngine:
                         new_val = normalize_value(new_fld.value) if new_fld else None
 
                         if prev_val != new_val:
+                            fld_sec = new_fld.section if new_fld else (prev_fld.section if prev_fld else None)
                             field_diffs.append(FieldChange(
                                 field=f_name,
                                 previous=prev_val,
-                                new=new_val
+                                new=new_val,
+                                section=fld_sec
                             ))
 
                     # Check geometry changes

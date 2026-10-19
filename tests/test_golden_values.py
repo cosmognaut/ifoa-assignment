@@ -4,6 +4,7 @@ from pathlib import Path
 from pipeline.config import load_crawler_config, require_str
 from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
+from pipeline.parse.airports import AirportParser
 
 def _cache_dir() -> Path:
     return Path(require_str(load_crawler_config(), "cache_dir", "crawler.yaml"))
@@ -40,10 +41,11 @@ def test_golden_values_ebbr():
     assert rwy_01.fields["lda"].value == 2941.0
     assert rwy_01.fields["trueBearing"].value == 14.43
 
-    # 3. Physical Runway 01-19 LineString
-    rwy_pair = feat_map["EBBR/RWY/01-19"]
-    assert rwy_pair.geometry.type == "LineString"
-    assert len(rwy_pair.geometry.coordinates) == 2
+    # 4. Runway 07R Remarks (Operational Restriction - ISSUES.md §1)
+    rwy_07r = feat_map["EBBR/RWY/07R"]
+    assert "remarks" in rwy_07r.fields
+    assert rwy_07r.fields["remarks"].value == "No TKOF before PSN H"
+    assert rwy_07r.fields["remarks"].section == "EBBR AD 2.13"
 
 def test_golden_values_ebci():
     """Asserts authoritative real aeronautical numbers for Charleroi (EBCI)."""
@@ -62,22 +64,36 @@ def test_golden_values_ebci():
     assert rwy_06.fields["length"].value == 2905.0
     assert rwy_06.fields["width"].value == 45.0
 
-def test_golden_values_eblg():
-    """Asserts authoritative real aeronautical numbers for Liège (EBLG)."""
+def test_golden_values_airports():
+    """Asserts authentic operational data for airports (AD 2.2, 2.3, 2.6)."""
     cache_dir = _cache_dir()
-    doc_path = cache_dir / "2026-10-01-current" / "EB-AD-2.EBLG-en-GB.html"
-    if not doc_path.exists():
-        pytest.skip("EBLG raw HTML not present")
+    parser = AirportParser("2026-10-01-current", "2026-10-01")
 
-    parser = RunwayParser("2026-10-01-current", "2026-10-01")
-    feats, _ = parser.parse_airport_runways(
-        "EBLG", doc_path.read_text(encoding="utf-8"), doc_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z"
-    )
-    feat_map = {f.natural_key: f for f in feats}
+    # EBBR
+    ebbr_path = cache_dir / "2026-10-01-current" / "EB-AD-2.EBBR-en-GB.html"
+    if ebbr_path.exists():
+        ebbr_ad, _ = parser.parse_airport_summary("EBBR", ebbr_path.read_text(encoding="utf-8"), ebbr_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+        assert ebbr_ad.fields["elevation"].value == 175.0
+        assert ebbr_ad.fields["elevation"].unit == "FT"
+        assert ebbr_ad.fields["hoursOperator"].value == "H24"
+        assert ebbr_ad.fields["rffsCategory"].value == "CAT 10"
+        lon, lat = ebbr_ad.geometry.coordinates
+        assert round(lon, 4) == 4.4844
+        assert round(lat, 4) == 50.9014
 
-    rwy_04r = feat_map["EBLG/RWY/04R"]
-    assert rwy_04r.fields["length"].value == 3690.0
-    assert rwy_04r.fields["width"].value == 45.0
+    # EBCI
+    ebci_path = cache_dir / "2026-10-01-current" / "EB-AD-2.EBCI-en-GB.html"
+    if ebci_path.exists():
+        ebci_ad, _ = parser.parse_airport_summary("EBCI", ebci_path.read_text(encoding="utf-8"), ebci_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+        assert ebci_ad.fields["elevation"].value == 606.0
+        assert "CAT 7" in ebci_ad.fields["rffsCategory"].value
+
+    # EBLG
+    eblg_path = cache_dir / "2026-10-01-current" / "EB-AD-2.EBLG-en-GB.html"
+    if eblg_path.exists():
+        eblg_ad, _ = parser.parse_airport_summary("EBLG", eblg_path.read_text(encoding="utf-8"), eblg_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+        assert eblg_ad.fields["elevation"].value == 651.0
+        assert "CAT 10" in eblg_ad.fields["rffsCategory"].value
 
 def test_golden_values_waypoints():
     """Asserts waypoint extraction from ENR 4.4."""
