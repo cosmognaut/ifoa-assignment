@@ -1,5 +1,7 @@
 # Belgian & Luxembourg eAIP Ingestion Pipeline & Audit Engine
 
+For a two-page technical overview see [`ARCHITECTURE.md`](ARCHITECTURE.md); for the full decision record see [`DECISION_LOG.md`](DECISION_LOG.md).
+
 ## Overview
 This system ingests, validates, and diffs the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP) published by skeyes across consecutive 28-day AIRAC cycles. Built for flight dispatchers and operations controllers, it transforms unstructured HTML tables into structured, cryptographically fingerprinted aeronautical features with complete legal provenance. When a new cycle is published, it isolates changes down to individual field modifications (e.g. reduced runway LDA or displaced thresholds) and halts promotion if safety-critical invariants or disappearance thresholds are violated.
 

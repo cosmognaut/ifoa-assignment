@@ -180,9 +180,140 @@ This document records the architectural, data modeling, and engineering decision
 
 ## 16. Airspace Geometry Policy: Attributes-Only & Zero Synthesized Polygons
 
-* **Context**: ENR 2.1 (ATS Airspace: FIR, UIR, CTA, TMA) and ENR 5.1/5.2 (Prohibited, Restricted, Danger, and Military Exercise Areas) publish lateral boundaries as complex legal narrative prose (e.g., *"505311N 0042013E - an arc of circle, 0.8 NM radius, centred on 505311N 0042130E... along the Belgian/German border"*). The HTML source contains zero vector polygon or GIS shape elements.
+* **Context**: ENR 2.1 (ATS Airspace: FIR, UIR, CTA, TMA) and ENR 5.1/5.2 (Prohibited, Restricted, Danger, and Military Exercise Areas) publish lateral boundaries as complex legal narrative prose. `SUA/EBR01` reads *"505311N 0042013E - an arc of circle, 0.8 NM radius, centred on 505311N 0042130E and traced clockwise to 505316N 0042247E - an arc of circle, 2.7 NM radius"*; other records follow national borders instead of arcs, and `SUA/EBD29` names the Belgian-German, Belgian-Luxembourg and Belgian-French borders in the same field. The HTML source contains zero vector polygon or GIS shape elements.
 * **Decision**: Strictly enforce `geometry: None` on all `airspace` and `specialUseArea` features. Absolute prohibition against synthesizing pseudo-polygons (no bounding boxes, no centroid points, no convex hulls).
 * **Reasoning & Future Work**:
   1. *Safety Invariance*: In civil aviation, approximating a prohibited military firing range or TMA buffer with a convex hull misleads dispatchers and flight management computers about the legal boundary, creating critical airspace infringement hazards.
   2. *Preservation of Ground Truth*: The exact narrative description is preserved verbatim in `fields.lateralLimitsRaw` with 100% field-level provenance.
   3. *Future Architecture*: Real vector geometry generation requires a dedicated geodesic boundary interpreter using Pyproj geodesic arcs, circle sampling, and official sovereign border shapefiles. Storing the raw legal text provides the uncorrupted input for this future engine without falsifying current data.
+
+---
+
+## 17. Cycle Diff Engine: `contentHash` Identity, Field-Level Change Records
+
+* **Context**: Each AIRAC cycle republishes the whole AIP. Storing cycle N+1 as a replacement destroys the reviewer's ability to see what actually changed, and re-parsing the same bytes must never be able to fabricate a change.
+* **Decision**: `pipeline/diff/engine.py` joins the two cycles on `naturalKey` (ADR 7) and classifies each key as `NEW`, `MODIFIED`, `DELETED` or `UNCHANGED` by comparing `contentHash` only. `MODIFIED` rows carry a list of `FieldChange` objects (`pipeline/models/change.py`), each holding `field`, `previous`, `new` and the originating `section`. Disappearance percentages computed in the same pass feed `promotion_gate.max_disappeared_runways_pct` (`0.0`) and `max_disappeared_features_pct` (`5.0`) in `config/validation.yaml`, and are read by `pipeline/validate/rules.py`.
+* **Reasoning**:
+  - *No phantom diffs*: `compute_content_hash` (`pipeline/utils/hash_utils.py`) hashes normalised values and units only — `source`, `section`, `effective_date`, `retrieved_at`, `source_url`, `parser_version` and `raw_text` are excluded by construction. Re-parsing identical bytes, or a re-stamp of `retrieved_at`, cannot register as a change.
+  - *Reviewable, not just detectable*: a `FieldChange` naming `lda: 2941 -> 2850` with `section: EBBR AD 2.13` is what a dispatcher can act on; a boolean "modified" is not.
+  - *Evidence*: `tests/test_diff_and_quarantine.py` (synthetic two-cycle diff; gate thresholds), `pipeline diff --from … --to …`, `GET /api/changes`.
+  - *Known gap*: only one cycle (`data/raw/2026-10-01-current`) exists in this repository, so the engine has never run against two genuinely different published cycles. Its correctness is established by the unit test, not by production history.
+
+---
+
+## 18. Paragraph-Sourced Fields: AD 2.1 Is Not a Table
+
+* **Context**: The parser dispatch (`config/sections.yaml`) assumed every field comes from an HTML table cell. AD 2.1 (Aerodrome Location Indicator and Name) publishes a single `<p>` element reading `EBBR — BRUSSELS / Brussels-National`, so a table locator finds nothing and the aerodrome would ship nameless.
+* **Decision**: Section specs may declare `source: "paragraph"` with a `pattern`. `pipeline/parse/airports.py` honours that declaration for AD 2.1, applies the regex to the last `<p>` of the section, and stores the entire paragraph as `raw_text`. When the paragraph is missing or does not match, the parser emits `RULE_MISSING_AIRPORT_NAME` at severity `warning` and continues with the remaining sections.
+* **Reasoning**:
+  - *Degradation over failure*: a missing name is a cosmetic defect; aborting the aerodrome would discard coordinates, hours and RFFS data that parsed correctly.
+  - *Provenance survives a non-table source*: `raw_text` holds the whole sentence, not the captured group, so the reviewer sees the same string the publisher printed.
+  - *Evidence*: `config/sections.yaml` (`AD-2.1`, line 116), `pipeline/parse/airports.py` (paragraph branch), `tests/test_golden_values.py` (asserts `airportName == "BRUSSELS / Brussels-National"` and `raw_text == "EBBR — BRUSSELS / Brussels-National"`, plus the missing-name warning path).
+
+---
+
+## 19. Read-Only GeoJSON API
+
+* **Context**: The dataset needed a consumer that did not require a Python environment, without turning the pipeline into a service.
+* **Decision**: `api/server.ts` exposes eight read endpoints — `/api/health`, `/api/publications`, `/api/feature-types`, `/api/features`, `/api/features/:naturalKey`, `/api/airports/:icao`, `/api/changes`, `/api/issues`. It is strictly read-only: no writes, no auth, no mutation surface. The stored document is already GeoJSON-shaped, so the API passes `geometry` and `properties` through untouched; keys inside `fields` keep their snake_case (`effective_date`, `raw_text`) because they are the provenance contract, not a presentation concern.
+* **Reasoning**:
+  - *Full set by default*: `/api/features` returns every matching feature, including the 224 with `geometry: null`; `withGeometry=true` narrows to the 395 mappable ones. Filtering geometry by default would hide the airspace register from the client that needs it.
+  - *Slash-safe detail route*: natural keys contain slashes (`EBBR/RWY/25L`), so the detail route is a regex (`/^\/api\/features\/(.+)$/`) rather than a `:param` segment.
+  - *No second source of truth*: connection URI, database name and all four collection names are read from `config/database.yaml` (`api/db.ts`); nothing is duplicated in TypeScript.
+  - *`_id` never leaks*: every query carries an `_id: 0` projection.
+  - *Evidence*: `api/test/api.test.ts`, `config/database.yaml`.
+
+---
+
+## 20. Validation Made Visible
+
+* **Context**: The pipeline had persisted `validationIssues` since ADR 9, but nothing read them. A legitimate cross-border STAR fix — `WPT/GIVOR` at 48.658611° N / 6.391389° E, south of the widened operational bounding box (49.0–52.0° N, 2.0–7.0° E, plus `margin_degrees: 0.25`) — surfaced as `RULE_OPERATIONAL_BBOX`, which to a reviewer looks exactly like a parser defect.
+* **Decision**: `GET /api/issues` serves the collection with `publicationId`, `featureKey` and `severity` filters. The web inspector renders a muted block under the field list showing rule id, severity, human message and the offending snippet.
+* **Reasoning**:
+  - *A warning is information, not noise*: the issue is real (the waypoint is outside the box the rule defines) and correct (the waypoint is a foreign fix). Hiding it would hide the rule; showing it with its severity communicates "checked, tolerated".
+  - *Severity discipline*: `RULE_OPERATIONAL_BBOX` is configured as `warning` in `config/validation.yaml`, so it cannot quarantine a cycle — only `error`-severity rules and the disappearance thresholds can.
+  - *Evidence*: `api/test/api.test.ts`, `web/src/test/inspector.test.tsx`, `config/validation.yaml`.
+
+---
+
+## 21. TypeScript With No Build Step
+
+* **Context**: A conventional Node service would add a bundler, a `dist/` directory and a compile step between the source a reviewer reads and the artifact that runs.
+* **Decision**: The API ships its own `.ts` files. Node 26 strips types natively, so `node server.ts` (`api/package.json`) is the production entry point — there is no `dist/`, no bundler and no emitted JavaScript. `tsc --noEmit` is the gate, with `strict` and `erasableSyntaxOnly` enabled.
+* **Reasoning**:
+  - *`erasableSyntaxOnly` as an architectural constraint*: the compiler rejects `enum`, `namespace` and parameter properties, because those emit runtime code rather than being erasable. That keeps "types disappear at runtime" literally true instead of aspirational.
+  - *Queries are checked, not asserted*: domain shapes are `interface`s and Mongo queries are typed `Filter<FeatureDoc>` / `Filter<PublicationDoc>`, so a misnamed field is a compile error rather than an empty result set.
+  - *Evidence*: `api/package.json` (`start`, `typecheck`), `api/tsconfig.json` (`strict`, `erasableSyntaxOnly`), `api/server.ts` (`Filter<…>` annotations), `api/test/api.test.ts` (26 tests, run with `node --test`).
+
+---
+
+## 22. Map Runtime: Leaflet to MapLibre GL
+
+* **Context**: The first map used Leaflet with CARTO raster tiles. CARTO's raster endpoints turned out to return one byte-identical placeholder image for every z/x/y, with or without an API key (three different tiles, keyed and unkeyed, hash to the same 2,513-byte PNG). The key unlocks only the vector style, and Leaflet's renderer draws raster tiles and vector overlays, not Mapbox Vector Tiles.
+* **Decision**: Replace Leaflet with MapLibre GL rendering one trimmed GeoJSON source over CARTO Dark Matter *nolabels*: 395 drawable features, properties reduced to `naturalKey`, `featureType`, `parentKey`, `effectiveFrom`. Six feature layers (`route-line`, `runway-line`, `runwaydir-point`, `waypoint-point`, `navaid-point`, `aerodrome-point`) plus two selection layers. Interaction is one `queryRenderedFeatures` call over an ±8 px box around the pointer, for both click and hover-cursor, with point layers ordered before line layers so `hits[0]` prefers a point.
+* **Reasoning**:
+  - *No place names to fight*: the base style is 66 layers — 56 line, 9 fill, 1 background, zero symbol. Nothing in the basemap can compete with the aeronautical labels, because the basemap has none.
+  - *Hit testing without hit layers*: the Leaflet build gave every drawable feature a visible layer plus an invisible 14 px hit layer (`git show 2b06bf5^:web/src/components/MapView.tsx`) — 790 layers for 395 features. MapLibre answers the same question with one rendered-feature query.
+  - *No payload tax on first paint*: MapLibre is imported through `React.lazy`, so the entry chunk stays at 77.7 kB gzip and the map lives in its own 290 kB gzip chunk; the Overview never downloads it.
+  - *Evidence*: `web/src/components/MapView.tsx`, `web/src/App.tsx`, `web/vite.config.ts`, `npm run build` output, `curl https://basemaps.cartocdn.com/gl/dark-matter-nolabels-gl-style/style.json`.
+
+---
+
+## 23. Frontend Shape, Type and Licensing
+
+* **Context**: Three views needed the same chrome — the top bar, the docked inspector and the provenance block — and the type stack had to be redistributable with the repository.
+* **Decision**: One shell: a 72 px top bar and a docked 400 px inspector, with views (Overview, Map, Register, Airport) swapped inside it. Type is Clash Grotesk and Clash Display for display text and IBM Plex Mono for anything numeric, all self-hosted as woff2 under `web/public/fonts` (7 files, no CDN at runtime).
+* **Reasoning**:
+  - *Shell, not three pages*: swapping a view inside a persistent shell keeps selection state, the inspector and provenance rendering in one place; three pages would triplicate them.
+  - *Licensing is a build input*: ABC Favorit was rejected because the copy available for evaluation carried an aggregator "free for personal use" notice — not a redistribution licence. Clash Grotesk and Clash Display are Fontshare families (free for commercial use) and IBM Plex Mono is OFL 1.1; those are upstream terms, and the repository ships no separate font licence file, so they are recorded here rather than asserted by an artefact. Self-hosting also removes a runtime dependency on a font CDN.
+  - *Numerals stay in the mono face*: measured in Chromium at 100 px, Clash Grotesk sets `1111111111` at 328 px, `0000000000` at 701.4 px and `8888888888` at 612.3 px — proportional digits — and `font-feature-settings: "tnum"` changes nothing (no `tnum` feature). IBM Plex Mono sets all three at 600 px. Any column of figures in Clash Grotesk would jitter, so digits and tabular values carry `.mono`.
+  - *Evidence*: `web/src/styles/tokens.css`, `web/public/fonts/`, `web/src/App.tsx`. The digit-width measurement is reproducible in the running console; `ABC Favorit` appears nowhere in the repository, so the rejection is recorded here as rationale rather than as an artifact.
+
+---
+
+## 24. Coordinates Are Rendered for Humans
+
+* **Context**: GeoJSON stores positions as `[longitude, latitude]`. A reviewer reading the inspector saw `5.317778, 50.770833` and read it as a latitude — the array is correct, the presentation was not.
+* **Decision**: `FieldRow` renders coordinate fields latitude first with hemisphere suffixes — `50.770833° N, 5.317778° E` — and repeats the publisher's own DMS string (`504615N 0051904E`) on the line beneath for cross-checking. Detection is by field name (`/coordinate/i`), not by a hardcoded list of keys.
+* **Reasoning**:
+  - *Reader order over storage order*: aviation reads lat/lon; GeoJSON writes lon/lat. The UI resolves that in one place instead of asking every consumer to remember.
+  - *Two renderings, one value*: the decimal pair is what a client can compute with, the raw DMS is what the AIP printed. Showing both makes a transcription error visible rather than silent.
+  - *Name-based, not enumeration-based*: a new coordinate field in `config/sections.yaml` is rendered correctly without touching TypeScript.
+  - *Evidence*: `web/src/components/FieldRow.tsx`, `web/src/test/fieldRow.test.tsx` (asserts lat-first output, asserts the AIP string is present, asserts the old lon-first string is absent). The behaviour arrived in `177f9e1 fix(web): fit the map to the data, latitude-first coordinates, lazy map chunk`; the worked example above is the stored record `WPT/ANQUZ` (`data/export/2026-10-01-current/features.geojson`).
+
+---
+
+## 25. Accent Semantics: Interaction Only
+
+* **Context**: In an early build the accent (`#C8FF00`) marked interaction *and* status: the overview aerodrome cards painted a lime dot for `promoted`, identical on all three cards.
+* **Decision**: The accent means interaction and selection only — active tab, selected row bar, selection ring, focus. Status is neutral, amber (`--warn-*`) or red (`--err-*`); there is no green status token. The `promoted` dot was removed from the cards and their footer now states an action (`Open summary →`), which turns accent on hover.
+* **Reasoning**:
+  - *One colour, one meaning*: if lime can mean "passing" and "clickable", the operator has to decode context on every glance.
+  - *Status lives in one place*: the promoted/staged/rejected state belongs to the run panel and the top-bar pill, where it is labelled, not to a repeated dot.
+  - *Evidence*: `web/src/styles/tokens.css` (`--accent`, `--warn-*`, `--err-*`), `web/src/components/OverviewView.tsx` (no `promoted` reference remains in the card path).
+
+---
+
+## 26. Test Strategy, Two Layers
+
+* **Context**: The project has two very different things to prove: that Mongo query shapes and stored values are right, and that presentation rules (which are pure functions of props) hold.
+* **Decision**: Two layers, deliberately asymmetric.
+  - *API layer* (`api/test/api.test.ts`, 26 tests, `node --test`): runs against the real MongoDB and asserts genuine aeronautical values — `lda.value == 3210`, `lda.unit == "M"`, `lda.section == "EBBR AD 2.13"` — plus the filter, projection and 404 behaviour of every endpoint.
+  - *Web layer* (`web/src/test/`, Vitest + jsdom + Testing Library): hermetic. No network, no API, no database. It covers the presentation invariants — the `UNL` collapse, latitude-first coordinates, acronym casing in field labels, the validation block, register filtering, provenance labels.
+* **Reasoning**:
+  - *A mocked database proves nothing about query shapes*: the failure this API can have is a projection or a filter that silently returns the wrong set. Only the real store can falsify that.
+  - *The web app cannot need a database to test a formatter*: `renderValue` and `coordinateText` are functions of one value. Making them require a backend would make the suite slower and less trustworthy.
+  - *Evidence*: `api/test/api.test.ts`, `web/src/test/*.test.tsx`, `npm test` in `web/`.
+
+---
+
+## 27. Dataset Export
+
+* **Context**: The assessment asks for the structured extracted dataset as a deliverable. Before this decision the data existed only in MongoDB, so a reviewer needed Mongo, a cycle load and the API running in sequence to see a single value.
+* **Decision**: `pipeline export --cycle <id> --out <dir>` writes three files under `<dir>/<cycle>/`: `features.geojson` (one `FeatureCollection`, the same camelCase envelope the API serves), `publications.json` and `validation_issues.json`. Features are sorted by `naturalKey`, issues by `(ruleId, featureKey)`, publications by `effectiveDate`; serialisation is `indent=2, sort_keys=True, ensure_ascii=False` with a trailing newline.
+* **Reasoning**:
+  - *Deterministic artefact*: re-running the export produces byte-identical files (`sha256sum -c` passes), so a committed snapshot shows real data changes instead of timestamp churn.
+  - *Nothing invented, nothing dropped*: `geometry: null` survives as an explicit null (224 of 619 features), and `_id` is projected away at every level.
+  - *Fail before writing*: an unknown cycle, a cycle with no features, and an unreachable database all exit non-zero without creating a directory, so a half-written dataset can never be mistaken for a result.
+  - *Pure helpers, thin shell*: the shaping functions in `pipeline/cli.py` take lists of documents and return values; only `cmd_export` touches `MongoLoader`. That is what lets `tests/test_export.py` run with no MongoDB at all.
+  - *Evidence*: `pipeline/cli.py`, `tests/test_export.py`, `data/export/2026-10-01-current/`.
