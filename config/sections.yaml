@@ -111,6 +111,11 @@ sections:
     anchor_template: "{icao}-AD-2.1"
     heading_pattern: "AD 2.1"
     target_type: "aerodrome"
+    fields:
+      airportName:
+        source: "paragraph"
+        pattern: "^.*\\u2014\\s*(.+)$"
+        converter: "text"
 
   - id: "AD-2.2"
     name: "Aerodrome Geographical and Administrative Data"

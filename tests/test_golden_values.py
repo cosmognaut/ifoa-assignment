@@ -1,6 +1,8 @@
 import pytest
 from pathlib import Path
 
+from bs4 import BeautifulSoup
+
 from pipeline.config import load_crawler_config, require_str
 from pipeline.models.feature import FeatureType
 from pipeline.parse.runways import RunwayParser
@@ -79,6 +81,9 @@ def test_golden_values_airports():
         ebbr_ad, _ = parser.parse_airport_summary("EBBR", ebbr_path.read_text(encoding="utf-8"), ebbr_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
         assert ebbr_ad.fields["elevation"].value == 175.0
         assert ebbr_ad.fields["elevation"].unit == "FT"
+        assert ebbr_ad.fields["airportName"].value == "BRUSSELS / Brussels-National"
+        assert ebbr_ad.fields["airportName"].section == "EBBR AD 2.1"
+        assert ebbr_ad.fields["airportName"].raw_text == "EBBR — BRUSSELS / Brussels-National"
         assert ebbr_ad.fields["hoursOperator"].value == "H24"
         assert ebbr_ad.fields["rffsCategory"].value == "CAT 10"
         lon, lat = ebbr_ad.geometry.coordinates
@@ -90,6 +95,7 @@ def test_golden_values_airports():
     if ebci_path.exists():
         ebci_ad, _ = parser.parse_airport_summary("EBCI", ebci_path.read_text(encoding="utf-8"), ebci_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
         assert ebci_ad.fields["elevation"].value == 606.0
+        assert ebci_ad.fields["airportName"].value == "CHARLEROI / Brussels South"
         assert "CAT 7" in ebci_ad.fields["rffsCategory"].value
 
     # EBLG
@@ -97,7 +103,44 @@ def test_golden_values_airports():
     if eblg_path.exists():
         eblg_ad, _ = parser.parse_airport_summary("EBLG", eblg_path.read_text(encoding="utf-8"), eblg_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
         assert eblg_ad.fields["elevation"].value == 651.0
+        assert eblg_ad.fields["airportName"].value == "LIÈGE / Liège"
         assert "CAT 10" in eblg_ad.fields["rffsCategory"].value
+
+def test_airport_name_missing_does_not_abort():
+    """AD 2.1 without a usable name paragraph must warn, not drop the airport."""
+    cache_dir = _cache_dir()
+    doc_path = cache_dir / "2026-10-01-current" / "EB-AD-2.EBBR-en-GB.html"
+    if not doc_path.exists():
+        pytest.skip("EBBR raw HTML not present")
+
+    parser = AirportParser("2026-10-01-current", "2026-10-01")
+    source_html = doc_path.read_text(encoding="utf-8")
+
+    for variant, expected_snippet in (("missing", ""), ("nomatch", "EBBR no separator")):
+        soup = BeautifulSoup(source_html, "html.parser")
+        div = soup.find(id="EBBR-AD-2.1")
+        assert div is not None
+        paragraphs = div.find_all("p")
+        assert paragraphs
+        if variant == "missing":
+            for paragraph in paragraphs:
+                paragraph.decompose()
+        else:
+            paragraphs[-1].string = expected_snippet
+
+        feat, issues = parser.parse_airport_summary(
+            "EBBR", str(soup), doc_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z"
+        )
+        assert feat is not None
+        assert "airportName" not in feat.fields
+        assert feat.fields["elevation"].value == 175.0
+
+        name_issues = [i for i in issues if i.rule_id == "RULE_MISSING_AIRPORT_NAME"]
+        assert len(name_issues) == 1
+        assert name_issues[0].severity.value == "warning"
+        assert name_issues[0].feature_key == "EBBR"
+        assert name_issues[0].section == "EBBR AD 2.1"
+        assert name_issues[0].raw_snippet == expected_snippet
 
 def test_golden_values_navaids():
     """Asserts authentic operational data for navaids (ENR 4.1): AFI, ANT, BUB, BBE."""
