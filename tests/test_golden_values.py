@@ -2,11 +2,13 @@ import pytest
 from pathlib import Path
 
 from pipeline.config import load_crawler_config, require_str
+from pipeline.models.feature import FeatureType
 from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
 from pipeline.parse.navaids import NavaidParser
 from pipeline.parse.routes import RouteParser
+from pipeline.parse.airspace import AirspaceParser
 
 def _cache_dir() -> Path:
     return Path(require_str(load_crawler_config(), "cache_dir", "crawler.yaml"))
@@ -184,3 +186,32 @@ def test_golden_values_routes():
     assert lower["value"] == 195.0
     assert lower["unit"] == "FL"
     assert lower["reference"] == "AMSL"
+
+def test_airspace_and_sua_geometry_is_strictly_none_and_has_lateral_limits():
+    """Asserts ABSOLUTE PROHIBITION: geometry is None and lateralLimitsRaw is non-empty for all airspace/SUA."""
+    cache_dir = _cache_dir()
+    parser = AirspaceParser("2026-10-01-current", "2026-10-01")
+
+    # 1. ENR-2.1 Airspace
+    doc_21 = cache_dir / "2026-10-01-current" / "EB-ENR-2.1-en-GB.html"
+    if doc_21.exists():
+        asp_feats, _ = parser.parse_airspace_enr21(doc_21.read_text(encoding="utf-8"), doc_21.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+        assert len(asp_feats) >= 50
+        for f in asp_feats:
+            assert f.feature_type == FeatureType.AIRSPACE
+            assert f.geometry is None, f"VIOLATION: geometry must be None for {f.natural_key}"
+            assert "lateralLimitsRaw" in f.fields
+            assert len(f.fields["lateralLimitsRaw"].value.strip()) > 0
+            assert f.fields["lateralLimitsRaw"].section == "ENR 2.1"
+
+    # 2. ENR-5.1 / 5.2 Special Use Airspace
+    doc_51 = cache_dir / "2026-10-01-current" / "EB-ENR-5.1-en-GB.html"
+    if doc_51.exists():
+        sua_feats, _ = parser.parse_special_use_document(doc_51.read_text(encoding="utf-8"), "ENR-5.1", doc_51.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+        assert len(sua_feats) >= 50
+        for f in sua_feats:
+            assert f.feature_type == FeatureType.SPECIAL_USE_AREA
+            assert f.geometry is None, f"VIOLATION: geometry must be None for {f.natural_key}"
+            assert "lateralLimitsRaw" in f.fields
+            assert len(f.fields["lateralLimitsRaw"].value.strip()) > 0
+            assert f.fields["lateralLimitsRaw"].section == "ENR 5.1"

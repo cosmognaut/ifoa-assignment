@@ -6,7 +6,7 @@ import json
 import argparse
 from pathlib import Path
 from datetime import datetime, timezone
-from typing import List, Dict, Any, Tuple, Optional
+from typing import List, Dict, Any, Tuple, Optional, Set
 
 from pipeline.config import (
     load_crawler_config,
@@ -27,6 +27,7 @@ from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
 from pipeline.parse.navaids import NavaidParser
 from pipeline.parse.routes import RouteParser
+from pipeline.parse.airspace import AirspaceParser
 from pipeline.validate.rules import ValidationEngine
 from pipeline.diff.engine import DiffEngine, DiffReport
 from pipeline.load.load import MongoLoader
@@ -334,6 +335,49 @@ def _parse_airport_summary(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[O
         retrieved_at=retrieved_at
     )
 
+def _parse_airspaces(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    sections_cfg = load_sections_config()
+    asp_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "ENR-2.1"), None)
+    if not asp_spec:
+        return [], []
+    fname = asp_spec.get("file_pattern", "EB-ENR-2.1-en-GB.html")
+    doc_path = cache_dir / cycle_id / fname
+    if not doc_path.exists():
+        return [], []
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+    doc_meta = next((item for item in manifest_items if item.section_id == "ENR-2.1"), None)
+    source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+    retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    parser = AirspaceParser(cycle_id=cycle_id, effective_date=meta.get("effective_date", cycle_id[:10]))
+    return parser.parse_airspace_enr21(doc_path.read_text(encoding="utf-8"), doc_path.name, source_url, retrieved_at)
+
+def _parse_special_use_areas(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    sections_cfg = load_sections_config()
+    all_feats: List[Feature] = []
+    all_issues: List[ValidationIssue] = []
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    parser = AirspaceParser(cycle_id=cycle_id, effective_date=meta.get("effective_date", cycle_id[:10]))
+
+    for sec_id in ("ENR-5.1", "ENR-5.2"):
+        sec_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == sec_id), None)
+        if not sec_spec:
+            continue
+        fname = sec_spec.get("file_pattern")
+        if not fname:
+            continue
+        doc_path = cache_dir / cycle_id / fname
+        if not doc_path.exists():
+            continue
+        doc_meta = next((item for item in manifest_items if item.section_id == sec_id), None)
+        source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+        retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+        feats, issues = parser.parse_special_use_document(doc_path.read_text(encoding="utf-8"), sec_id, doc_path.name, source_url, retrieved_at)
+        all_feats.extend(feats)
+        all_issues.extend(issues)
+    return all_feats, all_issues
+
 def _parse_routes(cycle_id: str, cache_dir: Path, known_wpts: Set[str], known_navs: Set[str]) -> Tuple[List[Feature], List[ValidationIssue]]:
     sections_cfg = load_sections_config()
     all_feats: List[Feature] = []
@@ -420,6 +464,15 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
         route_feats, route_issues = _parse_routes(cycle_id, cache_dir, known_wpts, known_navs)
         all_features.extend(route_feats)
         all_issues.extend(route_issues)
+
+        # Airspace and Special-Use Areas (attributes only, geometry strictly None)
+        asp_feats, asp_issues = _parse_airspaces(cycle_id, cache_dir)
+        all_features.extend(asp_feats)
+        all_issues.extend(asp_issues)
+
+        sua_feats, sua_issues = _parse_special_use_areas(cycle_id, cache_dir)
+        all_features.extend(sua_feats)
+        all_issues.extend(sua_issues)
 
     return all_features, all_issues
 
