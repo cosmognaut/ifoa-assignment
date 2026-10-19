@@ -12,12 +12,13 @@ import urllib.robotparser
 from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 
+from pipeline.config import load_crawler_config, require_str
+
 
 class PoliteCrawler:
     """This class models a simple, polite crawler"""
     def __init__(self, config_path: str = "config/crawler.yaml"):
-        with open(config_path, "r", encoding="utf-8") as f:
-            self.cfg = yaml.safe_load(f)["crawler"]
+        self.cfg = load_crawler_config(config_path)
 
         contact_email = self.cfg.get("contact_email", "me@ishu.foo")
         user_agent_format = self.cfg.get(
@@ -30,7 +31,7 @@ class PoliteCrawler:
         self.user_agent = user_agent_format.format(contact_email=contact_email)
         self.rate_limit_seconds = float(self.cfg.get("rate_limit_seconds", 1.0))
         self.timeout = float(self.cfg.get("timeout_seconds", 30.0))
-        self.cache_dir = Path(self.cfg.get("cache_dir", "data/raw"))
+        self.cache_dir = Path(require_str(self.cfg, "cache_dir", config_path))
         self.respect_robots = bool(self.cfg.get("respect_robots_txt", True))
 
         self.last_request_time = 0.0
@@ -78,7 +79,7 @@ class PoliteCrawler:
         Returns a dict matching ManifestItem.
 
         Plan:
-        Target destination is data/raw/<cycle_id>/<filename>. Alongside the raw file, it also maintains a small YAML sidecar (ex. EB-AD-2.EBBR-en-GB.html.meta) recording the previous etag, sha256 and fetched_at.If the file exists on the disk and has an etag, it sends If-None-Match: <etag> If the server responds with 304 not modified, it reuses the existing bytes without re-downloading, marking the status as "not modified". We also compute SHA256 hash of the bytes on the fly and write the sidecar .meta file. For fault-tolerant returns, we return a dictionary matching ManifestItem with status  "fetched", "not_modified", "cached", or "failed_http_XYZ".
+        Target destination is <cache_dir>/<cycle_id>/<filename>. Alongside the raw file, it also maintains a small YAML sidecar (ex. <filename>.meta) recording the previous etag, sha256 and fetched_at.If the file exists on the disk and has an etag, it sends If-None-Match: <etag> If the server responds with 304 not modified, it reuses the existing bytes without re-downloading, marking the status as "not modified". We also compute SHA256 hash of the bytes on the fly and write the sidecar .meta file. For fault-tolerant returns, we return a dictionary matching ManifestItem with status  "fetched", "not_modified", "cached", or "failed_http_XYZ".
         """
         self._init_robots(url)
         dest_dir = self.cache_dir / cycle_id

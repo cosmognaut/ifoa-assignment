@@ -7,3 +7,36 @@ crawler:
   base_product_url: "https://ops.skeyes.be/html/belgocontrol_static/eaip/eAIP_Product/index.html"
   respect_robots_txt: true
   max_retries: 3
+
+  # Publisher site layout. This is the ONLY place where facts about how this
+  # particular publisher lays out its eAIP product are allowed to live. Point
+  # the pipeline at a different AIP by editing this block, not the Python.
+  publisher:
+    name: "Belgium & Luxembourg eAIP"
+    accept_header: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8"
+
+    # Role names are emitted verbatim as `role` in discovered cycles.
+    # Order matters: it is the order cycles are probed, and the order used to
+    # disambiguate two editions that share an effective date.
+    cycle_folders:
+      previous: "eAIP_Previous"
+      current: "eAIP_Main"
+      preview: "eAIP_Next"
+
+    html_subdir: "html"
+    cover_document: "EB-cover-en-GB.html"
+    menu_document: "EB-menu-en-GB.html"
+    eaip_subdir: "eAIP"
+
+    # Resolved relative to base_product_url.
+    cycle_cover_path_template: "../{folder}/{html_subdir}/{cover_document}"
+
+    # Every pattern below MUST contain exactly one capture group; the parser
+    # reads group(1) as the value and ignores the surrounding text.
+    labels:
+      amendment_id_pattern: '((?:AIRAC\s+)?AMDT\s+\d{3}/\d{4})'
+      effective_date_pattern: 'Effective date:\s*([0-9]{1,2}\s+[A-Za-z]{3}\s+[0-9]{4})'
+      publication_date_pattern: 'Publication date:\s*([0-9]{1,2}\s+[A-Za-z]{3}\s+[0-9]{4})'
+
+    # Used when a cover page yields no amendment id.
+    amendment_id_fallback_template: "AMDT-{folder}"

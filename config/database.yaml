@@ -1,0 +1,8 @@
+# simple database persistence config. 
+database:
+  uri: "mongodb://localhost:27017/aero_pipeline"
+  name: "aero_pipeline"
+  collections:
+    publications: "publications"
+    features: "features"
+    validation_issues: "validationIssues"

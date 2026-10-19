@@ -1,18 +1,69 @@
 # section discovery/table allocation specification
 # both file matching and element anchor/heading locators are supported.
 # see https://www.eurocontrol.int/publication/eurocontrol-specification-electronic-aeronautical-information-publication-eaip
+#
+# This file is the single source of truth for WHAT gets ingested. Discovery
+# derives its download list from this list alone; nothing here is restated in
+# Python.
+#
+# Key semantics:
+#   id                      stable section identifier. Never templated.
+#   name                    human label, emitted by discovery and used in logs.
+#   category                "GEN" | "ENR" | "AD". Emitted by discovery.
+#   scope                   "global"       -> one document for the whole AIP
+#                           "per_airport"  -> one document per entry in
+#                                             airports.yaml target_airports
+#   document_id             identity of the FILE this section lives in. All
+#                           sections sharing a document_id are grouped into a
+#                           single download. Optional; defaults to `id`.
+#                           Templated with {icao} when present.
+#   file_template           filename, templated with {icao}. Per-airport sections.
+#   file_pattern            filename, no templating. Global sections.
+#   anchor / anchor_template / heading_pattern / target_type
+#                           consumed by the parse layer to locate the slice
+#                           inside the downloaded document.
+
+converters_regex:
+  coordinates_dms: "(\\d{2})(\\d{2})(\\d{2}(?:\\.\\d+)?)\\s*([NS])\\s*(\\d{3})(\\d{2})(\\d{2}(?:\\.\\d+)?)\\s*([EW])"
+  coordinates_dms_compact: "^(\\d{2})(\\d{2})(\\d{2}(?:\\.\\d+)?)([NS])(\\d{3})(\\d{2})(\\d{2}(?:\\.\\d+)?)([EW])$"
+  dimensions: "(\\d+(?:[\\s\\u2009\\xa0]\\d+)?)\\s*[xX]\\s*(\\d+)"
+  bearing: "(\\d+(?:\\.\\d+)?)"
+  elevation: "THR\\s+(\\d+(?:\\.\\d+)?)\\s*FT"
+  elevation_fallback: "(\\d+(?:\\.\\d+)?)"
+  distance: "(\\d+(?:[\\s\\u2009\\xa0]\\d+)?)"
+
+surface_mapping:
+  asphalt: "ASPH"
+  concrete: "CONC"
+  grass: "GRAS"
+  default: "OTHER"
 
 sections:
   # General Information
   - id: "GEN-0.2"
     name: "Record of AIP Amendments"
+    category: "GEN"
+    scope: "global"
     file_pattern: "EB-GEN-0.2-en-GB.html"
     anchor: "GEN-0.2"
+    heading_pattern: "GEN 0.2"
     target_type: "publicationMetadata"
 
-  # Aerodrome Sections (Discovered dynamically per airport in target_airports)
+  - id: "GEN-2.5"
+    name: "List of Radio Navigation Aids"
+    category: "GEN"
+    scope: "global"
+    file_pattern: "EB-GEN-2.5-en-GB.html"
+    anchor: "GEN-2.5"
+    heading_pattern: "GEN 2.5"
+    target_type: "navaid"
+
+  # Aerodrome Sections (All live in EB-AD-2.{icao}-en-GB.html)
   - id: "AD-2.1"
     name: "Aerodrome Location Indicator and Name"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.1"
     heading_pattern: "AD 2.1"
@@ -20,6 +71,9 @@ sections:
 
   - id: "AD-2.2"
     name: "Aerodrome Geographical and Administrative Data"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.2"
     heading_pattern: "AD 2.2"
@@ -27,6 +81,9 @@ sections:
 
   - id: "AD-2.3"
     name: "Operational Hours"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.3"
     heading_pattern: "AD 2.3"
@@ -34,6 +91,9 @@ sections:
 
   - id: "AD-2.6"
     name: "Rescue and Fire Fighting Services"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.6"
     heading_pattern: "AD 2.6"
@@ -41,20 +101,89 @@ sections:
 
   - id: "AD-2.12"
     name: "Runway Physical Characteristics"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.12"
     heading_pattern: "AD 2.12"
-    target_type: "runway"
+    target_type: "runwayDirection"
+    table_locator:
+      required_headers:
+        - "rwy designator"
+        - "true brg"
+    fields:
+      designator:
+        header_pattern: "rwy designator"
+        converter: "text"
+      trueBearing:
+        header_pattern: "true brg"
+        converter: "bearing"
+        unit: "DEG"
+      dimensions:
+        header_pattern: "dimensions of rwy"
+        converter: "dimensions"
+        subfields:
+          length:
+            unit: "M"
+          width:
+            unit: "M"
+      strength:
+        header_pattern: "strength"
+        converter: "surface_strength"
+      thresholdCoordinates:
+        header_pattern: "thr coord"
+        converter: "coordinates"
+      thresholdElevation:
+        header_pattern: "thr elev"
+        converter: "elevation"
+        unit: "FT"
+    pair_fields:
+      pairDesignator:
+        unit: null
+      length:
+        unit: "M"
+      width:
+        unit: "M"
+      surface:
+        unit: null
 
   - id: "AD-2.13"
     name: "Declared Distances"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.13"
     heading_pattern: "AD 2.13"
     target_type: "runwayDirection"
+    table_locator:
+      required_headers:
+        - "tora"
+        - "lda"
+    fields:
+      tora:
+        header_pattern: "tora"
+        converter: "distance"
+        unit: "M"
+      toda:
+        header_pattern: "toda"
+        converter: "distance"
+        unit: "M"
+      asda:
+        header_pattern: "asda"
+        converter: "distance"
+        unit: "M"
+      lda:
+        header_pattern: "lda"
+        converter: "distance"
+        unit: "M"
 
   - id: "AD-2.19"
     name: "Radio Navigation and Landing Aids"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.19"
     heading_pattern: "AD 2.19"
@@ -62,6 +191,9 @@ sections:
 
   - id: "AD-2.20"
     name: "Local Aerodrome Regulations"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
     file_template: "EB-AD-2.{icao}-en-GB.html"
     anchor_template: "{icao}-AD-2.20"
     heading_pattern: "AD 2.20"
@@ -70,6 +202,8 @@ sections:
   # En-Route Sections
   - id: "ENR-2.1"
     name: "Air Traffic Services Airspace"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-2.1-en-GB.html"
     anchor: "ENR-2.1"
     heading_pattern: "ENR 2.1"
@@ -77,6 +211,8 @@ sections:
 
   - id: "ENR-3.1"
     name: "Lower ATS Routes"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-3.1-en-GB.html"
     anchor: "ENR-3.1"
     heading_pattern: "ENR 3.1"
@@ -84,6 +220,8 @@ sections:
 
   - id: "ENR-3.2"
     name: "Upper ATS Routes"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-3.2-en-GB.html"
     anchor: "ENR-3.2"
     heading_pattern: "ENR 3.2"
@@ -91,6 +229,8 @@ sections:
 
   - id: "ENR-4.1"
     name: "Radio Navigation Aids - En-Route"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-4.1-en-GB.html"
     anchor: "ENR-4.1"
     heading_pattern: "ENR 4.1"
@@ -98,6 +238,8 @@ sections:
 
   - id: "ENR-4.4"
     name: "Significant Points (Waypoints)"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-4.4-en-GB.html"
     anchor: "ENR-4.4"
     heading_pattern: "ENR 4.4"
@@ -105,6 +247,8 @@ sections:
 
   - id: "ENR-5.1"
     name: "Prohibited, Restricted and Danger Areas"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-5.1-en-GB.html"
     anchor: "ENR-5.1"
     heading_pattern: "ENR 5.1"
@@ -112,6 +256,8 @@ sections:
 
   - id: "ENR-5.2"
     name: "Military Exercise and Training Areas"
+    category: "ENR"
+    scope: "global"
     file_pattern: "EB-ENR-5.2-en-GB.html"
     anchor: "ENR-5.2"
     heading_pattern: "ENR 5.2"
