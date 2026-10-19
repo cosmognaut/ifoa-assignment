@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { isRecord } from '../api';
 import type { FeatureTypeCount, GeoJsonFeature, Publication } from '../types';
 
 function textValue(value: unknown): string | null {
@@ -19,6 +20,12 @@ function aerodromeElevation(feature: GeoJsonFeature): string | null {
   if (field === undefined || field.value === null || field.value === undefined) return null;
   const unit = field.unit === null ? '' : ` ${field.unit}`;
   return `${String(field.value)}${unit}`;
+}
+
+function numericStat(stats: Record<string, unknown> | null, key: string): string {
+  if (stats === null) return '—';
+  const value = stats[key];
+  return typeof value === 'number' && Number.isFinite(value) ? String(value) : '—';
 }
 
 const METHOD_STEPS = [
@@ -81,6 +88,26 @@ export function OverviewView({
   }, [features]);
 
   const promoted = publication !== null && publication.status === 'promoted';
+  const stats = publication !== null && isRecord(publication.stats) ? publication.stats : null;
+  const status = publication === null ? '—' : publication.status;
+  const manifest =
+    publication !== null && typeof publication.manifestSha256 === 'string'
+      ? publication.manifestSha256
+      : '—';
+  const ingested =
+    publication !== null && typeof publication.ingestedAt === 'string'
+      ? publication.ingestedAt
+      : '—';
+  const runRows = [
+    { label: 'CYCLE', value: publication?.cycleId ?? '—' },
+    { label: 'AMENDMENT', value: publication?.amendmentId ?? '—' },
+    { label: 'EFFECTIVE', value: publication?.effectiveDate ?? '—' },
+    { label: 'DOCUMENTS', value: numericStat(stats, 'total_documents') },
+    { label: 'FEATURES', value: numericStat(stats, 'parsed_features') },
+    { label: 'ISSUES', value: numericStat(stats, 'issue_count') },
+    { label: 'ERRORS', value: numericStat(stats, 'error_count') },
+    { label: 'WARNINGS', value: numericStat(stats, 'warning_count') }
+  ];
 
   return (
     <section className="overview" aria-label="Overview">
@@ -140,15 +167,43 @@ export function OverviewView({
 
         <section className="overview-section" aria-label="Methodology">
           <h2 className="overview-section-head t1">Methodology</h2>
-          <ol className="overview-method">
-            {METHOD_STEPS.map((item) => (
-              <li className="overview-method-row" key={item.step}>
-                <span className="overview-method-step t3 mono">{item.step}</span>
-                <span className="overview-method-title t3">{item.title}</span>
-                <span className="overview-method-desc t3">{item.description}</span>
-              </li>
-            ))}
-          </ol>
+          <div className="overview-method-grid">
+            <ol className="overview-method">
+              {METHOD_STEPS.map((item) => (
+                <li className="overview-method-row" key={item.step}>
+                  <span className="overview-method-step t3 mono">{item.step}</span>
+                  <span className="overview-method-title t3">{item.title}</span>
+                  <span className="overview-method-desc t3">{item.description}</span>
+                </li>
+              ))}
+            </ol>
+
+            <aside className="run-panel" aria-label="Current run">
+              <header className="run-panel-head">
+                <span className="run-panel-title t1">CURRENT RUN</span>
+                <span className="run-panel-status">
+                  <span className="run-panel-dot" aria-hidden="true" />
+                  <span className="run-panel-status-text t2">{status}</span>
+                </span>
+              </header>
+
+              <dl className="run-panel-rows">
+                {runRows.map((row) => (
+                  <div className="run-panel-row" key={row.label}>
+                    <dt className="run-panel-label t2">{row.label}</dt>
+                    <dd className="run-panel-value t2 mono">{row.value}</dd>
+                  </div>
+                ))}
+              </dl>
+
+              <div className="run-panel-block">
+                <div className="run-panel-meta-label t1">MANIFEST</div>
+                <div className="run-panel-manifest t2 mono">{manifest}</div>
+                <div className="run-panel-meta-label run-panel-ingested-label t1">INGESTED</div>
+                <div className="run-panel-ingested t2 mono">{ingested}</div>
+              </div>
+            </aside>
+          </div>
         </section>
 
         <footer className="overview-signature t1">a cosmognaut production</footer>

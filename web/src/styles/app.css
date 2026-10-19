@@ -395,11 +395,16 @@ a {
   background: var(--accent);
 }
 
+.overview-method-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 360px;
+  gap: 56px;
+}
+
 .overview-method {
   display: flex;
   flex-direction: column;
   gap: 24px;
-  max-width: 72ch;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -424,6 +429,111 @@ a {
   color: var(--text-secondary);
   font-weight: 500;
   line-height: 1.6;
+  max-width: 72ch;
+}
+
+.run-panel {
+  position: sticky;
+  top: 96px;
+  align-self: start;
+  padding: 20px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  background: var(--surface-1);
+}
+
+.run-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+
+.run-panel-title {
+  color: var(--text-muted);
+}
+
+.run-panel-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.run-panel-dot {
+  flex: 0 0 auto;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--accent);
+}
+
+.run-panel-status-text {
+  color: var(--text-secondary);
+}
+
+.run-panel-rows {
+  display: flex;
+  flex-direction: column;
+  margin-top: 16px;
+}
+
+.run-panel-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  height: 32px;
+}
+
+.run-panel-row + .run-panel-row {
+  border-top: 1px solid var(--border-subtle);
+}
+
+.run-panel-label {
+  color: var(--text-muted);
+}
+
+.run-panel-value {
+  color: var(--text-primary);
+  text-align: right;
+  word-break: break-word;
+}
+
+.run-panel-block {
+  margin-top: 24px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.run-panel-meta-label {
+  color: var(--text-muted);
+}
+
+.run-panel-manifest {
+  margin-top: 4px;
+  color: var(--text-primary);
+  line-height: 1.6;
+  word-break: break-all;
+}
+
+.run-panel-ingested-label {
+  margin-top: 16px;
+}
+
+.run-panel-ingested {
+  margin-top: 4px;
+  color: var(--text-secondary);
+}
+
+@media (max-width: 1099px) {
+  .overview-method-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .run-panel {
+    position: static;
+  }
 }
 
 .overview-signature {
