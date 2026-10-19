@@ -4,7 +4,7 @@ import type { FeatureType, FeatureTypeCount, GeoJsonFeature } from '../types';
 import { LayerPanel, featureColour } from './LayerPanel';
 
 const SELECTION_PANE = 'selection-pane';
-const BG_TOKEN = '--bg-canvas';
+const BG_TOKEN = '--bg';
 const ACCENT_TOKEN = '--accent';
 
 function cssToken(name: string): string {
@@ -111,8 +111,8 @@ export function MapView({
 
     const map = L.map(container, { preferCanvas: true }).setView([50.7, 4.6], 8);
 
-    L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_nolabels/{z}/{x}/{y}{r}.png', {
-      attribution: '&copy; OpenStreetMap &copy; CARTO',
+    L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '&copy; OpenStreetMap contributors',
       maxZoom: 19
     }).addTo(map);
 

@@ -60,7 +60,7 @@ export function Inspector({ feature, loading }: InspectorProps) {
   return (
     <aside className="inspector" aria-label="Inspector">
       <header className="inspector-header">
-        <span className="type-badge t1 mono">{properties.featureType}</span>
+        <span className="type-badge t1">{properties.featureType}</span>
         <h2 className="inspector-key t4 mono">{properties.naturalKey}</h2>
         <p className="inspector-subline t2 mono">
           parent {properties.parentKey ?? '—'} · eff {properties.effectiveFrom}

@@ -1,12 +1,13 @@
 import { useCallback, useMemo, useState } from 'react';
 import { Inspector } from './components/Inspector';
 import { MapView } from './components/MapView';
+import { OverviewView } from './components/OverviewView';
 import { REGISTER_ALL, RegisterView } from './components/RegisterView';
 import { TopBar } from './components/TopBar';
 import { useFeatures } from './hooks/useFeatures';
 import type { GeoJsonFeature } from './types';
 
-export type View = 'map' | 'airport' | 'register';
+export type View = 'overview' | 'map' | 'airport' | 'register';
 
 interface AirportViewProps {
   aerodromes: GeoJsonFeature[];
@@ -68,7 +69,7 @@ function ContentState({ title, detail, action }: ContentStateProps) {
 
 export function App() {
   const { status, types, features, drawable, publication, error, reload } = useFeatures();
-  const [view, setView] = useState<View>('map');
+  const [view, setView] = useState<View>('overview');
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [registerFilter, setRegisterFilter] = useState<string>(REGISTER_ALL);
 
@@ -89,6 +90,16 @@ export function App() {
     setSelectedKey(naturalKey);
   }, []);
 
+  const handleSelectAerodrome = useCallback((naturalKey: string) => {
+    setSelectedKey(naturalKey);
+    setView('airport');
+  }, []);
+
+  const registerCount = useMemo(
+    () => features.filter((feature) => feature.geometry === null).length,
+    [features]
+  );
+
   const handleShowRegister = useCallback((featureType: string) => {
     setRegisterFilter(featureType);
     setView('register');
@@ -96,7 +107,12 @@ export function App() {
 
   return (
     <div className="app">
-      <TopBar view={view} onViewChange={setView} publication={publication} />
+      <TopBar
+        view={view}
+        onViewChange={setView}
+        publication={publication}
+        registerCount={registerCount}
+      />
 
       <main className="workspace">
         <section className="content">
@@ -112,6 +128,16 @@ export function App() {
               title="DATA UNAVAILABLE"
               detail={error ?? 'Unknown error while loading data.'}
               action={{ label: 'Retry', onClick: reload }}
+            />
+          ) : null}
+
+          {status === 'ready' && view === 'overview' ? (
+            <OverviewView
+              publication={publication}
+              types={types}
+              features={features}
+              aerodromes={aerodromes}
+              onSelectAerodrome={handleSelectAerodrome}
             />
           ) : null}
 

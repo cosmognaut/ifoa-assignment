@@ -1,33 +1,88 @@
+/* Self-hosted typefaces — no runtime CDN requests. */
+
+@font-face {
+  font-family: 'Clash Grotesk';
+  src: url('/fonts/clash-grotesk-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Clash Grotesk';
+  src: url('/fonts/clash-grotesk-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Clash Grotesk';
+  src: url('/fonts/clash-grotesk-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Clash Display';
+  src: url('/fonts/clash-display-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Clash Display';
+  src: url('/fonts/clash-display-600.woff2') format('woff2');
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/ibm-plex-mono-400.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'IBM Plex Mono';
+  src: url('/fonts/ibm-plex-mono-500.woff2') format('woff2');
+  font-weight: 500;
+  font-style: normal;
+  font-display: swap;
+}
+
 :root {
-  --bg-canvas: #0d0f12;
-  --bg-surface-1: #14171c;
-  --bg-surface-2: #1c2026;
-  --bg-surface-3: #252a32;
-  --bg-hud: rgba(20, 23, 28, 0.9);
+  --bg: #000000;
+  --surface-1: #0a0a0a;
+  --surface-2: #111111;
+  --surface-3: #181818;
+  --surface-hover: #1a1a1a;
 
-  --border-subtle: #3d4552;
-  --border-strong: #4a5464;
-  --border-focus: #38bdf8;
+  --border-subtle: #3d3d3d;
+  --border-strong: #4a4a4a;
 
-  --text-primary: #f1f5f9;
-  --text-secondary: #94a3b8;
-  --text-muted: #7c8b9e;
+  --text-primary: #f2f2f2;
+  --text-secondary: #a3a3a3;
+  --text-muted: #737373;
 
-  --accent: #38bdf8;
-  --accent-surface: rgba(56, 189, 248, 0.12);
-
-  --ok-fg: #34d399;
-  --ok-bg: rgba(52, 211, 153, 0.12);
-  --ok-border: rgba(52, 211, 153, 0.35);
+  --accent: #c8ff00;
+  --accent-surface: rgba(200, 255, 0, 0.12);
+  --accent-border: rgba(200, 255, 0, 0.4);
 
   --warn-fg: #fbbf24;
-  --warn-bg: rgba(251, 191, 36, 0.12);
+  --warn-surface: rgba(251, 191, 36, 0.1);
   --warn-border: rgba(251, 191, 36, 0.35);
 
   --err-fg: #f87171;
-  --err-bg: rgba(248, 113, 113, 0.12);
+  --err-surface: rgba(248, 113, 113, 0.1);
   --err-border: rgba(248, 113, 113, 0.35);
 
-  --font-sans: 'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif;
-  --font-mono: 'JetBrains Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+  --font-display: 'Clash Display', 'Clash Grotesk', system-ui, sans-serif;
+  --font-sans: 'Clash Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
 }

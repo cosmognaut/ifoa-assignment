@@ -19,6 +19,10 @@ function renderSourceUrl(url: string | null): ReactNode {
   );
 }
 
+function valueClass(key: string): string {
+  return key === 'source' ? 'provenance-value t2' : 'provenance-value t2 mono';
+}
+
 export interface ProvenanceBlockProps {
   field: Field | null;
 }
@@ -34,20 +38,20 @@ export function ProvenanceBlock({ field }: ProvenanceBlockProps) {
           <dl className="provenance-grid">
             {PROVENANCE_KEYS.map((key) => (
               <div className="provenance-row" key={key}>
-                <dt className="provenance-key t2 mono">{key}</dt>
-                <dd className="provenance-value t2 mono">{field[key]}</dd>
+                <dt className="provenance-key t1">{key}</dt>
+                <dd className={valueClass(key)}>{field[key]}</dd>
               </div>
             ))}
             <div className="provenance-row">
-              <dt className="provenance-key t2 mono">source_url</dt>
-              <dd className="provenance-value t2 mono">
+              <dt className="provenance-key t1">source_url</dt>
+              <dd className={valueClass('source_url')}>
                 {renderSourceUrl(field.source_url)}
               </dd>
             </div>
             {PROVENANCE_TAIL_KEYS.map((key) => (
               <div className="provenance-row" key={key}>
-                <dt className="provenance-key t2 mono">{key}</dt>
-                <dd className="provenance-value t2 mono">{field[key]}</dd>
+                <dt className="provenance-key t1">{key}</dt>
+                <dd className={valueClass(key)}>{field[key]}</dd>
               </div>
             ))}
           </dl>

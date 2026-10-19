@@ -3,24 +3,25 @@ import type { FeatureType, FeatureTypeCount, GeoJsonFeature } from '../types';
 
 const FEATURE_COLOUR_TOKENS: Record<string, string> = {
   aerodrome: '--accent',
-  navaid: '--ok-fg',
-  waypoint: '--text-muted',
+  navaid: '#D9D9D9',
+  waypoint: '#9A9A9A',
   runway: '--text-primary',
-  runwayDirection: '--warn-fg',
-  route: '--text-secondary',
+  runwayDirection: '#8A8A8A',
+  route: '#6E6E6E',
   airspace: '--err-fg',
   specialUseArea: '--err-fg'
 };
 
-const FALLBACK_TOKEN = '--err-fg';
+const FALLBACK_TOKEN = '--text-muted';
 
 const tokenCache = new Map<string, string>();
 
 function resolveToken(name: string): string {
+  if (name.startsWith('#')) return name;
   const cached = tokenCache.get(name);
   if (cached !== undefined) return cached;
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
-  const resolved = value === '' ? '#7c8b9e' : value;
+  const resolved = value === '' ? '#9a9a9a' : value;
   tokenCache.set(name, resolved);
   return resolved;
 }

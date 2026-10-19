@@ -68,6 +68,18 @@ export function renderValue(value: unknown): ReactNode {
   return String(value);
 }
 
+function isNumericValue(value: unknown): boolean {
+  if (typeof value === 'number') return true;
+  if (Array.isArray(value)) {
+    return value.length > 0 && value.every((item) => typeof item === 'number');
+  }
+  if (isRecord(value)) {
+    if ('reference' in value || 'unit' in value) return true;
+    if ('value' in value) return isNumericValue(value.value);
+  }
+  return false;
+}
+
 export interface FieldRowProps {
   name: string;
   field: Field;
@@ -86,7 +98,9 @@ export function FieldRow({ name, field, selected, onSelect }: FieldRowProps) {
       <span className="field-label t3">{humaniseFieldName(name)}</span>
       <span className="field-content">
         <span className="field-value-line">
-          <span className="field-value t3 mono">{renderValue(field.value)}</span>
+          <span className={`field-value t3${isNumericValue(field.value) ? ' mono' : ''}`}>
+            {renderValue(field.value)}
+          </span>
           {field.unit && !unitAlreadyInValue(field.value) ? (
             <span className="field-unit t2 mono">{field.unit}</span>
           ) : null}
