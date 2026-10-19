@@ -156,6 +156,16 @@ This document records the architectural, data modeling, and engineering decision
 
 ---
 
+## 14. Bitemporal History & `effective_to` Supersession
+
+* **Context**: The schema models `effective_from` and `effective_to` ("null if active"), but features were previously inserted with `effective_to: None` and never closed when new cycles arrived.
+* **Decision**: In `MongoLoader.promote_publication(cycle_id, effective_date)`:
+  1. Locate the previously promoted publication.
+  2. On all active features belonging to that previous cycle (`effectiveTo: None`), atomically update `effectiveTo = new_publication.effective_date`.
+  3. Mark the new publication as promoted.
+* **Reasoning**:
+  - Fully closes the bitemporal model. Any consumer can query: *"What was the active declared distance for Runway 01 on 2026-10-15?"* by querying `effectiveFrom <= date AND (effectiveTo > date OR effectiveTo IS NULL)`.
+
 ---
 
 ## 15. The AD 2.2 / 2.3 / 2.6 Key-Value Parser & Operational Layer Synthesis
@@ -168,3 +178,14 @@ This document records the architectural, data modeling, and engineering decision
 * **Reasoning**:
   - Turns 2 layers (`runway`, `waypoint`) into 3 active layers (`aerodrome`, `runway`, `waypoint`).
   - Supplies 100% of the data required for the Airport Operational View directly from official AIP source tables with complete provenance.
+
+---
+
+## 16. Airspace Geometry Policy: Attributes-Only & Zero Synthesized Polygons
+
+* **Context**: ENR 2.1 (ATS Airspace: FIR, UIR, CTA, TMA) and ENR 5.1/5.2 (Prohibited, Restricted, Danger, and Military Exercise Areas) publish lateral boundaries as complex legal narrative prose (e.g., *"505311N 0042013E - an arc of circle, 0.8 NM radius, centred on 505311N 0042130E... along the Belgian/German border"*). The HTML source contains zero vector polygon or GIS shape elements.
+* **Decision**: Strictly enforce `geometry: None` on all `airspace` and `specialUseArea` features. Absolute prohibition against synthesizing pseudo-polygons (no bounding boxes, no centroid points, no convex hulls).
+* **Reasoning & Future Work**:
+  1. *Safety Invariance*: In civil aviation, approximating a prohibited military firing range or TMA buffer with a convex hull misleads dispatchers and flight management computers about the legal boundary, creating critical airspace infringement hazards.
+  2. *Preservation of Ground Truth*: The exact narrative description is preserved verbatim in `fields.lateralLimitsRaw` with 100% field-level provenance.
+  3. *Future Architecture*: Real vector geometry generation requires a dedicated geodesic boundary interpreter using Pyproj geodesic arcs, circle sampling, and official sovereign border shapefiles. Storing the raw legal text provides the uncorrupted input for this future engine without falsifying current data.

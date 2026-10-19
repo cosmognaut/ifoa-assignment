@@ -57,3 +57,12 @@ This document tracks real-world data-quality problems, semantic ambiguities, and
 * **Raw Snippet**: `"3\u2009690 x 45"` (Liège Runway 04R/22L) and `"2\u2009987 x 50"` (Brussels Runway 01/19).
 * **Observation**: Numbers are formatted with Unicode Thin Space (`\u2009`) or Non-Breaking Space (`\xa0`) as thousands separators. A standard ASCII whitespace split or raw `float("3 690")` throws an immediate `ValueError`.
 * **Pipeline Mitigation**: The converter regexes in `config/sections.yaml` and the `normalize_value` engine explicitly strip all non-standard Unicode spacing `[\s\u2009\xa0]+` prior to numeric parsing and hashing.
+
+---
+
+## 7. Cross-Border ATS Route Waypoints Missing from National Index (`ENR 3.2` vs `ENR 4.4`)
+* **Location**: `EB-ENR-3.2-en-GB.html`, Routes `L179` and `Z310`.
+* **Points**: `ROMIN` (Route L179), `BATAK` (Route Z310).
+* **Observation**: In route table `L179`, the final segment terminates at point `ROMIN` (coordinates `511257N 0053548E`). Similarly, `Z310` references `BATAK`. However, neither `ROMIN` nor `BATAK` are published in Belgium's national Significant Points table (`ENR 4.4`). They are cross-border transition points legally published in the Netherlands (EHAM) and German (EDWW) national AIPs.
+* **Pipeline Mitigation**: In `pipeline/parse/routes.py`, significant points are resolved against the cycle's known waypoints (`WPT/*`) and navaids (`NAV/*`). When a point cannot be resolved against the domestic dataset, the pipeline records the natural key in `waypointSequence` and emits a typed `RULE_UNRESOLVED_WAYPOINT` issue. This allows flight planning engines to detect foreign border transitions without inventing synthetic coordinates.
+
