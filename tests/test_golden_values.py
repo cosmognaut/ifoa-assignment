@@ -6,6 +6,7 @@ from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
 from pipeline.parse.navaids import NavaidParser
+from pipeline.parse.routes import RouteParser
 
 def _cache_dir() -> Path:
     return Path(require_str(load_crawler_config(), "cache_dir", "crawler.yaml"))
@@ -138,3 +139,48 @@ def test_golden_values_navaids():
     assert bbe.fields["frequency"].value == 107.0
     assert bbe.fields["frequencyUnit"].value == "CH"
     assert bbe.fields["navaidType"].value == "TACAN"
+
+def test_golden_values_routes():
+    """Asserts route parsing, waypoint sequence, and vertical limits for ENR 3.2."""
+    cache_dir = _cache_dir()
+    doc_path = cache_dir / "2026-10-01-current" / "EB-ENR-3.2-en-GB.html"
+    if not doc_path.exists():
+        pytest.skip("ENR-3.2 raw HTML not present")
+
+    wpt_parser = WaypointParser("2026-10-01-current", "2026-10-01")
+    wpt_doc = cache_dir / "2026-10-01-current" / "EB-ENR-4.4-en-GB.html"
+    wpt_feats, _ = wpt_parser.parse_waypoints(wpt_doc.read_text(encoding="utf-8"), wpt_doc.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+    known_wpts = {f.natural_key for f in wpt_feats}
+
+    nav_parser = NavaidParser("2026-10-01-current", "2026-10-01")
+    nav_doc = cache_dir / "2026-10-01-current" / "EB-ENR-4.1-en-GB.html"
+    nav_feats, _ = nav_parser.parse_enroute_navaids(nav_doc.read_text(encoding="utf-8"), nav_doc.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z")
+    known_navs = {f.natural_key for f in nav_feats}
+
+    route_parser = RouteParser("2026-10-01-current", "2026-10-01")
+    feats, issues = route_parser.parse_routes_document(
+        doc_path.read_text(encoding="utf-8"), "ENR-3.2", doc_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z",
+        known_waypoint_keys=known_wpts, known_navaid_keys=known_navs
+    )
+    assert len(feats) >= 40
+    feat_map = {f.natural_key: f for f in feats}
+
+    # Verify L608
+    assert "RTE/L608" in feat_map
+    l608 = feat_map["RTE/L608"]
+    seq = l608.fields["waypointSequence"].value
+    assert "WPT/SASKI" in seq
+    assert "WPT/KEGIT" in seq
+    assert l608.geometry.type == "LineString"
+    assert len(l608.geometry.coordinates) >= 5
+
+    # Verify vertical limits
+    upper = l608.fields["upperLimit"].value
+    assert upper["value"] == 660.0
+    assert upper["unit"] == "FL"
+    assert upper["reference"] == "AMSL"
+
+    lower = l608.fields["lowerLimit"].value
+    assert lower["value"] == 195.0
+    assert lower["unit"] == "FL"
+    assert lower["reference"] == "AMSL"

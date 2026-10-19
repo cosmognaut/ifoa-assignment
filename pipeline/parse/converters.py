@@ -123,6 +123,37 @@ def convert_surface_strength(raw_text: str) -> Tuple[Tuple[str, str], Optional[s
 
     return (surface, raw_text), None
 
+def convert_vertical_limit(raw_text: str) -> Tuple[Optional[Dict[str, Any]], Optional[str]]:
+    """
+    Parses vertical limit strings like 'FL 660', 'FL 055', '4500 FT AMSL', 'SFC', 'UNL'.
+    Returns (dict with value, unit, reference), unit.
+    Bare numbers without unit/ref return unit=None, reference=None for validation flagging.
+    """
+    if not raw_text or raw_text.upper() == "NIL":
+        return None, None
+    u = re.sub(r"[\s\u2009\xa0]+", " ", raw_text.upper().strip())
+    if u in ("SFC", "GND"):
+        return {"value": 0.0, "unit": "FT", "reference": "SFC"}, "FT"
+    if u == "UNL":
+        return {"value": 999.0, "unit": "FL", "reference": "UNL"}, "FL"
+
+    m_fl = re.match(r"^FL\s*(\d+)$", u)
+    if m_fl:
+        return {"value": float(m_fl.group(1)), "unit": "FL", "reference": "AMSL"}, "FL"
+
+    m_ft = re.match(r"^(\d+(?:\.\d+)?)\s*(FT|M)\s*(AMSL|AGL|SFC)?$", u)
+    if m_ft:
+        ref = m_ft.group(3) or "AMSL"
+        unit = m_ft.group(2)
+        return {"value": float(m_ft.group(1)), "unit": unit, "reference": ref}, unit
+
+    m_bare = re.match(r"^(\d+(?:\.\d+)?)$", u)
+    if m_bare:
+        # Bare number without unit or reference: data quality error
+        return {"value": float(m_bare.group(1)), "unit": None, "reference": None}, None
+
+    return {"value": None, "unit": None, "reference": None, "raw": raw_text}, None
+
 def convert_text(raw_text: str) -> Tuple[Optional[str], Optional[str]]:
     """Passthrough text converter."""
     if not raw_text:
@@ -137,6 +168,7 @@ CONVERTER_REGISTRY: Dict[str, Callable[[str], Tuple[Any, Optional[str]]]] = {
     "distance": convert_distance,
     "elevation": convert_elevation,
     "surface_strength": convert_surface_strength,
+    "vertical_limit": convert_vertical_limit,
     "text": convert_text,
 }
 

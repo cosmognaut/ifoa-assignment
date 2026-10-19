@@ -26,6 +26,7 @@ from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
 from pipeline.parse.navaids import NavaidParser
+from pipeline.parse.routes import RouteParser
 from pipeline.validate.rules import ValidationEngine
 from pipeline.diff.engine import DiffEngine, DiffReport
 from pipeline.load.load import MongoLoader
@@ -333,6 +334,45 @@ def _parse_airport_summary(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[O
         retrieved_at=retrieved_at
     )
 
+def _parse_routes(cycle_id: str, cache_dir: Path, known_wpts: Set[str], known_navs: Set[str]) -> Tuple[List[Feature], List[ValidationIssue]]:
+    sections_cfg = load_sections_config()
+    all_feats: List[Feature] = []
+    all_issues: List[ValidationIssue] = []
+
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    effective_date = meta.get("effective_date", cycle_id[:10])
+    parser = RouteParser(cycle_id=cycle_id, effective_date=effective_date)
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+
+    for sec_id in ("ENR-3.1", "ENR-3.2"):
+        sec_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == sec_id), None)
+        if not sec_spec:
+            continue
+        fname = sec_spec.get("file_pattern")
+        if not fname:
+            continue
+        doc_path = cache_dir / cycle_id / fname
+        if not doc_path.exists():
+            continue
+
+        doc_meta = next((item for item in manifest_items if item.section_id == sec_id), None)
+        source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+        retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+
+        feats, issues = parser.parse_routes_document(
+            html_content=doc_path.read_text(encoding="utf-8"),
+            section_id=sec_id,
+            document_filename=doc_path.name,
+            source_url=source_url,
+            retrieved_at=retrieved_at,
+            known_waypoint_keys=known_wpts,
+            known_navaid_keys=known_navs
+        )
+        all_feats.extend(feats)
+        all_issues.extend(issues)
+
+    return all_feats, all_issues
+
 def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[ValidationIssue]]:
     """Single comprehensive parse pass: parses all configured airports, runway networks, and global waypoints."""
     cache_dir = _cache_dir(args)
@@ -365,7 +405,7 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
                 raw_snippet=f"EB-AD-2.{icao}-en-GB.html"
             ))
 
-    # Parse ENR 4.4 waypoints and ENR 4.1 navaids if not targeting a single airport
+    # Parse ENR 4.4 waypoints, ENR 4.1 navaids, and ENR 3.1/3.2 ATS routes if not targeting a single airport
     if not explicit_icao:
         wpt_feats, wpt_issues = _parse_waypoints(cycle_id, cache_dir)
         all_features.extend(wpt_feats)
@@ -374,6 +414,12 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
         nav_feats, nav_issues = _parse_enroute_navaids(cycle_id, cache_dir)
         all_features.extend(nav_feats)
         all_issues.extend(nav_issues)
+
+        known_wpts = {f.natural_key for f in wpt_feats}
+        known_navs = {f.natural_key for f in nav_feats}
+        route_feats, route_issues = _parse_routes(cycle_id, cache_dir, known_wpts, known_navs)
+        all_features.extend(route_feats)
+        all_issues.extend(route_issues)
 
     return all_features, all_issues
 
