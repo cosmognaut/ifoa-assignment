@@ -27,6 +27,7 @@ from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
 from pipeline.parse.navaids import NavaidParser
 from pipeline.parse.operational import OperationalParser
+from pipeline.parse.lighting import LightingParser
 from pipeline.parse.routes import RouteParser
 from pipeline.parse.airspace import AirspaceParser
 from pipeline.validate.rules import ValidationEngine
@@ -481,6 +482,35 @@ def _parse_airport_operational(cycle_id: str, icao: str, cache_dir: Path) -> Tup
 
     return features, issues
 
+def _parse_airport_lighting(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    """AD 2.14 approach and runway lighting, one feature per runway direction."""
+    sections_cfg = load_sections_config()
+    spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.14"), None)
+    if not spec:
+        return [], []
+    template = require_str(spec, "file_template", "sections.yaml AD-2.14")
+    doc_path = cache_dir / cycle_id / template.format(icao=icao)
+    if not doc_path.exists():
+        return [], []
+
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+    doc_meta = next((item for item in manifest_items if item.section_id == f"AD-2.{icao}"), None)
+    source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+    retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    effective_date = meta.get("effective_date", cycle_id[:10])
+
+    parser = LightingParser(cycle_id=cycle_id, effective_date=effective_date)
+    return parser.parse_airport_lighting(
+        icao=icao,
+        html_content=doc_path.read_text(encoding="utf-8"),
+        document_filename=doc_path.name,
+        source_url=source_url,
+        retrieved_at=retrieved_at,
+    )
+
+
 def _parse_airspaces(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
     sections_cfg = load_sections_config()
     asp_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "ENR-2.1"), None)
@@ -590,6 +620,10 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
             ops_feats, ops_issues = _parse_airport_operational(cycle_id, icao, cache_dir)
             all_features.extend(ops_feats)
             all_issues.extend(ops_issues)
+
+            light_feats, light_issues = _parse_airport_lighting(cycle_id, icao, cache_dir)
+            all_features.extend(light_feats)
+            all_issues.extend(light_issues)
         except FileNotFoundError as e:
             if explicit_icao:
                 raise e

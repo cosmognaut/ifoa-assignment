@@ -79,6 +79,34 @@ ils_component_tokens:
   - "GP"
   - "DME"
 
+# Designations become natural keys. The AIP prints them typographically (en dashes,
+# underscores, mixed case, accented capitals) and sometimes with a non-hierarchical
+# slash ("TRA/TSA11" is one area, not a child of TRA), so the key is normalised while
+# the `designation` field keeps the verbatim published text.
+natural_key_normalisation:
+  replacements:
+    "_": " "
+    "\u2013": "-"   # en dash  (ELTSA6 – DIEKIRCH NORTH)
+    "\u2014": "-"   # em dash
+    "/": "-"        # interior slash would add a key segment (TRA/TSA11 -> TRA-TSA11)
+  whitespace_pattern: "\\s+"
+  whitespace_replacement: " "
+  # The designator ends at the first " - "; everything after it is the place name.
+  code_separator: " - "
+  # What the normalised designator must look like — the same charset the validator
+  # enforces in natural_key_formats, checked here so a bad key is never emitted.
+  key_charset: "^[A-Z0-9][A-Z0-9 -]*$"
+  duplicate_suffix_template: "{base}-{n}"
+
+# Tables that sit inside an airspace section but publish no airspace: legend keys
+# ("a | b | c | d") and numbered procedure sections ("1.3.7.1 Airspace Allocation
+# Procedures"). Such a table is skipped and counted, never turned into a feature.
+non_data_row_rules:
+  designation_pattern: "^\\d+(\\.\\d+)+\\s"
+  min_designation_length: 4
+  max_designation_length: 80
+  min_value_length: 2
+
 navaid_type_tokens:
   "DVOR / DME": "DVOR/DME"
   "DVOR/DME": "DVOR/DME"
@@ -372,6 +400,55 @@ sections:
       component:
         source: "row-label"
         converter: "text"
+
+  - id: "AD-2.14"
+    name: "Approach and Runway Lighting"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.14"
+    heading_pattern: "AD 2.14"
+    target_type: "operationalInfo"
+    natural_key_template: "{icao}/LIGHTING/{designator}"
+    lighting:
+      # One table per runway: a single-cell caption ("RWY 01") then ragged rows of
+      # key/value pairs, where the section labels ("Approach lighting system",
+      # "VASIS", "Touchdown zone lights", ...) introduce the block the following
+      # labels belong to. "Type:", "Length:", "Intensity:" and "Colour:" repeat
+      # across blocks, so the current section decides which field they fill.
+      caption_pattern: "^RWY\\s+(?P<designator>[A-Z0-9]{1,4})$"
+      section_tokens:
+        - "approach lighting system"
+        - "vasis"
+        - "runway threshold lights"
+        - "touchdown zone lights"
+        - "runway end lights"
+        - "stopway lights"
+        - "runway centre line lights"
+        - "runway edge lights"
+      # section whose own value follows the label instead of a colon label
+      section_value_fields:
+        "touchdown zone lights": "touchdownZoneLights"
+      # "<section>|<label>" -> field; label is lower-cased with the colon stripped
+      section_label_fields:
+        "approach lighting system|type": "approachLightingType"
+        "approach lighting system|length": "approachLightingLength"
+        "approach lighting system|intensity": "approachLightingIntensity"
+        # The row after the VASIS pair ("Length: | 900 M | MEHT : | 59 FT") still
+        # describes the approach lighting system, not the VASIS.
+        "vasis|length": "approachLightingLength"
+        "vasis|intensity": "approachLightingIntensity"
+        "vasis|type": "vasisType"
+        "runway threshold lights|colour": "thresholdLightColour"
+      # labels that are unambiguous wherever they appear
+      global_label_fields:
+        "meht": "meht"
+      # fields persisted as value + unit instead of the raw string
+      measured_fields:
+        - "approachLightingLength"
+        - "meht"
+      length_pattern: "^(\\d+(?:[\\s\\u2009\\u00a0]\\d+)?)\\s*(M|FT)\\b"
 
   - id: "AD-2.20"
     name: "Local Aerodrome Regulations"
