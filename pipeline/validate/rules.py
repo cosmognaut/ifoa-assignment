@@ -1,15 +1,9 @@
-"""
-This is the safety and integrity engine.. it inspects each parsed Feature object and tests them against rules defined in config/validation.yaml. Some rules are:
-    - absolute coordinate ranges ([-90..90, [-180...180]])
-    - operational bounding box
-    - declared distance logic
-    - promotion gate threshold evaluator
-"""
 import re
-from pipeline.config import load_validation_config
-from typing import List, Dict, Any, Optional, Tuple
+from typing import List, Dict, Any, Optional, Tuple, Set
+
 from pipeline.models.feature import Feature, FeatureType
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
+from pipeline.config import load_validation_config
 
 class ValidationEngine:
     def __init__(self, validation_cfg: Optional[Dict[str, Any]] = None):
@@ -25,13 +19,13 @@ class ValidationEngine:
         self.bbox_max_lat = float(self.bbox_cfg["max_lat"]) + margin
         self.bbox_min_lon = float(self.bbox_cfg["min_lon"]) - margin
         self.bbox_max_lon = float(self.bbox_cfg["max_lon"]) + margin
-        # DYNAMIC SEVERITY: reads directly from YAML ("warning" vs "error")
         self.bbox_severity = IssueSeverity(self.bbox_cfg["severity"].lower())
 
-        # 3. Format Constraints from Config
-        self.icao_regex = re.compile(self.cfg["icao_format"])
-        self.rwy_regex = re.compile(self.cfg["runway_designator_format"])
-        self.wpt_regex = re.compile(self.cfg["waypoint_format"])
+        # 3. Dynamic Natural Key Format Mapping from Config (Zero hardcoded types in Python)
+        raw_key_formats = self.cfg.get("natural_key_formats", {})
+        self.natural_key_regexes: Dict[str, re.Pattern] = {
+            ft: re.compile(pat) for ft, pat in raw_key_formats.items()
+        }
 
         # 4. Declared Distance Rule Selection Flags
         self.dist_cfg = self.cfg["declared_distances"]
@@ -39,7 +33,13 @@ class ValidationEngine:
         self.require_asda_ge_tora = bool(self.dist_cfg["require_asda_ge_tora"])
         self.require_lda_positive = bool(self.dist_cfg["require_lda_positive"])
 
-        # 5. Promotion Gate Thresholds
+        # 5. Semantic Integrity Rule Selection Flags
+        rules_cfg = self.cfg.get("rules", {})
+        self.require_resolved_waypoints = bool(rules_cfg.get("require_resolved_waypoints", True))
+        self.require_unique_natural_keys = bool(rules_cfg.get("require_unique_natural_keys", True))
+        self.require_limit_units = bool(rules_cfg.get("require_limit_units", True))
+
+        # 6. Promotion Gate Thresholds
         self.gate_cfg = self.cfg["promotion_gate"]
         self.max_error_issues = int(self.gate_cfg["max_error_issues"])
         self.max_warning_issues = int(self.gate_cfg["max_warning_issues"])
@@ -49,58 +49,19 @@ class ValidationEngine:
     def validate_feature(self, feature: Feature, publication_id: str) -> List[ValidationIssue]:
         issues: List[ValidationIssue] = []
 
-        # 1. Natural Key format check using configured regex
-        parts = feature.natural_key.split("/")
-        icao_part = parts[0] if parts else ""
-
-        if feature.feature_type in (FeatureType.AERODROME, FeatureType.RUNWAY, FeatureType.RUNWAY_DIRECTION, FeatureType.OPERATIONAL_INFO):
-            if not self.icao_regex.match(icao_part):
-                issues.append(ValidationIssue(
-                    publication_id=publication_id,
-                    severity=IssueSeverity.ERROR,
-                    rule_id="RULE_ICAO_FORMAT",
-                    feature_key=feature.natural_key,
-                    section=feature.feature_type.value,
-                    message=f"Invalid ICAO code format: '{icao_part}'",
-                    raw_snippet=icao_part
-                ))
-        elif feature.feature_type == FeatureType.WAYPOINT:
-            if not self.wpt_regex.match(feature.natural_key):
-                issues.append(ValidationIssue(
-                    publication_id=publication_id,
-                    severity=IssueSeverity.ERROR,
-                    rule_id="RULE_WAYPOINT_FORMAT",
-                    feature_key=feature.natural_key,
-                    section="ENR-4.4",
-                    message=f"Invalid waypoint key format: '{feature.natural_key}'",
-                    raw_snippet=feature.natural_key
-                ))
-
-        if feature.feature_type == FeatureType.RUNWAY_DIRECTION:
-            desig_part = parts[-1] if len(parts) >= 3 else ""
-            if not self.rwy_regex.match(desig_part):
-                issues.append(ValidationIssue(
-                    publication_id=publication_id,
-                    severity=IssueSeverity.ERROR,
-                    rule_id="RULE_NATURAL_KEY_FORMAT",
-                    feature_key=feature.natural_key,
-                    section="AD-2.12",
-                    message=f"Invalid natural_key format for runwayDirection: '{feature.natural_key}'",
-                    raw_snippet=feature.natural_key
-                ))
-        elif feature.feature_type == FeatureType.RUNWAY:
-            pair_part = parts[-1] if len(parts) >= 3 else ""
-            pair_tokens = pair_part.split("-")
-            if len(pair_tokens) != 2 or not all(self.rwy_regex.match(p) for p in pair_tokens):
-                issues.append(ValidationIssue(
-                    publication_id=publication_id,
-                    severity=IssueSeverity.ERROR,
-                    rule_id="RULE_NATURAL_KEY_FORMAT",
-                    feature_key=feature.natural_key,
-                    section="AD-2.12",
-                    message=f"Invalid natural_key format for runway physical pair: '{feature.natural_key}'",
-                    raw_snippet=feature.natural_key
-                ))
+        # 1. Natural Key format check iterating the config mapping dynamically
+        ft_name = feature.feature_type.value
+        fmt_regex = self.natural_key_regexes.get(ft_name)
+        if fmt_regex and not fmt_regex.match(feature.natural_key):
+            issues.append(ValidationIssue(
+                publication_id=publication_id,
+                severity=IssueSeverity.ERROR,
+                rule_id="RULE_NATURAL_KEY_FORMAT",
+                feature_key=feature.natural_key,
+                section=ft_name,
+                message=f"Natural key '{feature.natural_key}' violates format pattern for {ft_name}",
+                raw_snippet=feature.natural_key
+            ))
 
         # 2. Geometry coordinate validation
         if feature.geometry and feature.geometry.coordinates:
@@ -124,7 +85,7 @@ class ValidationEngine:
                             severity=IssueSeverity.ERROR,
                             rule_id="RULE_COORD_RANGE",
                             feature_key=feature.natural_key,
-                            section="AD-2.12",
+                            section="coordinates",
                             message=f"Coordinates out of absolute bounds: [{lon}, {lat}]",
                             raw_snippet=f"[{lon}, {lat}]"
                         ))
@@ -135,7 +96,7 @@ class ValidationEngine:
                             severity=self.bbox_severity,
                             rule_id="RULE_OPERATIONAL_BBOX",
                             feature_key=feature.natural_key,
-                            section="AD-2.12",
+                            section="coordinates",
                             message=f"Coordinates outside operational FIR bounding box: [{lon}, {lat}]",
                             raw_snippet=f"[{lon}, {lat}]"
                         ))
@@ -152,7 +113,6 @@ class ValidationEngine:
             asda = asda_fld.value if asda_fld else None
             lda = lda_fld.value if lda_fld else None
 
-            # TORA <= TODA (conditional on require_tora_le_toda)
             if self.require_tora_le_toda and tora is not None and toda is not None:
                 if tora > toda:
                     issues.append(ValidationIssue(
@@ -160,12 +120,11 @@ class ValidationEngine:
                         severity=IssueSeverity.ERROR,
                         rule_id="RULE_DECLARED_DIST_TORA_LE_TODA",
                         feature_key=feature.natural_key,
-                        section="AD-2.13",
+                        section="AD 2.13",
                         message=f"Declared distance violation: TORA ({tora}m) exceeds TODA ({toda}m)",
                         raw_snippet=f"TORA: {tora}, TODA: {toda}"
                     ))
 
-            # ASDA >= TORA (conditional on require_asda_ge_tora)
             if self.require_asda_ge_tora and asda is not None and tora is not None:
                 if asda < tora:
                     issues.append(ValidationIssue(
@@ -173,12 +132,11 @@ class ValidationEngine:
                         severity=IssueSeverity.ERROR,
                         rule_id="RULE_DECLARED_DIST_ASDA_GE_TORA",
                         feature_key=feature.natural_key,
-                        section="AD-2.13",
+                        section="AD 2.13",
                         message=f"Declared distance violation: ASDA ({asda}m) is less than TORA ({tora}m)",
                         raw_snippet=f"ASDA: {asda}, TORA: {tora}"
                     ))
 
-            # LDA > 0 (conditional on require_lda_positive)
             if self.require_lda_positive and lda is not None:
                 if lda <= 0:
                     issues.append(ValidationIssue(
@@ -186,17 +144,54 @@ class ValidationEngine:
                         severity=IssueSeverity.ERROR,
                         rule_id="RULE_DECLARED_DIST_LDA_POSITIVE",
                         feature_key=feature.natural_key,
-                        section="AD-2.13",
+                        section="AD 2.13",
                         message=f"Declared distance violation: LDA ({lda}m) must be greater than zero",
                         raw_snippet=f"LDA: {lda}"
                     ))
+
+        # 4. Vertical limit unit and reference check (RULE_LIMIT_UNIT_MISSING)
+        if self.require_limit_units:
+            for lim_field in ("upperLimit", "lowerLimit"):
+                fld = feature.fields.get(lim_field)
+                if fld and isinstance(fld.value, dict):
+                    val = fld.value.get("value")
+                    unit = fld.value.get("unit")
+                    ref = fld.value.get("reference")
+                    if val is not None and (unit is None or ref is None):
+                        issues.append(ValidationIssue(
+                            publication_id=publication_id,
+                            severity=IssueSeverity.WARNING,
+                            rule_id="RULE_LIMIT_UNIT_MISSING",
+                            feature_key=feature.natural_key,
+                            section=fld.section,
+                            message=f"Vertical limit in {lim_field} has value {val} but missing unit or reference",
+                            raw_snippet=str(fld.value)
+                        ))
 
         return issues
 
     def validate_features(self, features: List[Feature], publication_id: str) -> List[ValidationIssue]:
         all_issues = []
+
+        # Duplicate naturalKey check within cycle (RULE_DUPLICATE_NATURAL_KEY)
+        if self.require_unique_natural_keys:
+            seen_keys: Set[str] = set()
+            for feat in features:
+                if feat.natural_key in seen_keys:
+                    all_issues.append(ValidationIssue(
+                        publication_id=publication_id,
+                        severity=IssueSeverity.ERROR,
+                        rule_id="RULE_DUPLICATE_NATURAL_KEY",
+                        feature_key=feat.natural_key,
+                        section="integrity",
+                        message=f"Duplicate naturalKey '{feat.natural_key}' detected in cycle",
+                        raw_snippet=feat.natural_key
+                    ))
+                seen_keys.add(feat.natural_key)
+
         for feat in features:
             all_issues.extend(self.validate_feature(feat, publication_id))
+
         return all_issues
 
     def evaluate_promotion_gate(

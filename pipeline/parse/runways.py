@@ -42,7 +42,8 @@ class RunwayParser:
         val_cfg = load_validation_config()
         self.rwy_regex = re.compile(val_cfg["runway_designator_format"])
 
-    def get_reciprocal_designator(self, desig: str) -> Optional[str]:
+    @staticmethod
+    def get_reciprocal_designator(desig: str) -> Optional[str]:
         """Computes reciprocal runway designator using aerodynamic runway orientation math."""
         m = re.match(r"^(\d{2})([LCR]?)$", desig.upper().strip())
         if not m:
@@ -55,9 +56,10 @@ class RunwayParser:
         recip_suffix = {"L": "R", "R": "L", "C": "C"}.get(suffix, "")
         return f"{recip_num:02d}{recip_suffix}"
 
-    def get_physical_pair_key(self, desig: str) -> str:
+    @staticmethod
+    def get_physical_pair_key(desig: str) -> str:
         """Returns sorted physical pair designator, e.g. '01-19' or '07R-25L'."""
-        recip = self.get_reciprocal_designator(desig)
+        recip = RunwayParser.get_reciprocal_designator(desig)
         if recip:
             return "-".join(sorted([desig, recip]))
         return desig
@@ -434,7 +436,6 @@ class RunwayParser:
 
         return features, issues
 
-# compatibility module functions just for testing
-_default_parser = RunwayParser("compat", "compat")
-get_reciprocal_designator = _default_parser.get_reciprocal_designator
-get_physical_pair_key = _default_parser.get_physical_pair_key
+# Static function aliases (zero import-time config I/O)
+get_reciprocal_designator = RunwayParser.get_reciprocal_designator
+get_physical_pair_key = RunwayParser.get_physical_pair_key

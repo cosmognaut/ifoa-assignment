@@ -140,3 +140,61 @@ def test_validation_engine_config_driven():
     strict_issues = strict_bbox_engine.validate_feature(out_of_bounds_feat, "2026-10-01-current")
     bbox_issue = next(i for i in strict_issues if i.rule_id == "RULE_OPERATIONAL_BBOX")
     assert bbox_issue.severity == IssueSeverity.ERROR
+
+def test_task_g_validation_rules():
+    """Asserts Task G rules: natural_key_formats, RULE_DUPLICATE_NATURAL_KEY, RULE_LIMIT_UNIT_MISSING."""
+    engine = ValidationEngine()
+
+    # 1. Test duplicate natural key detection
+    f1 = Feature(
+        feature_type=FeatureType.WAYPOINT,
+        natural_key="WPT/TEST1",
+        publication_id="cycle",
+        effective_from="2026-10-01",
+        content_hash="h1"
+    )
+    f2 = Feature(
+        feature_type=FeatureType.WAYPOINT,
+        natural_key="WPT/TEST1",  # Duplicate key!
+        publication_id="cycle",
+        effective_from="2026-10-01",
+        content_hash="h2"
+    )
+    dup_issues = engine.validate_features([f1, f2], "cycle")
+    dup_err = next((i for i in dup_issues if i.rule_id == "RULE_DUPLICATE_NATURAL_KEY"), None)
+    assert dup_err is not None
+    assert dup_err.severity == IssueSeverity.ERROR
+
+    # 2. Test natural key format from config
+    bad_key_feat = Feature(
+        feature_type=FeatureType.WAYPOINT,
+        natural_key="INVALID_PREFIX/TEST",
+        publication_id="cycle",
+        effective_from="2026-10-01",
+        content_hash="h3"
+    )
+    fmt_issues = engine.validate_feature(bad_key_feat, "cycle")
+    fmt_err = next((i for i in fmt_issues if i.rule_id == "RULE_NATURAL_KEY_FORMAT"), None)
+    assert fmt_err is not None
+    assert fmt_err.severity == IssueSeverity.ERROR
+
+    # 3. Test RULE_LIMIT_UNIT_MISSING on route with bare limit
+    bare_lim_feat = Feature(
+        feature_type=FeatureType.ROUTE,
+        natural_key="RTE/L999",
+        publication_id="cycle",
+        effective_from="2026-10-01",
+        content_hash="h4",
+        fields={
+            "upperLimit": FeatureField(
+                value={"value": 195.0, "unit": None, "reference": None},
+                unit=None, source="test", section="ENR 3.2",
+                effective_date="2026-10-01", retrieved_at="now",
+                source_url="url", parser_version="1.0", raw_text="195"
+            )
+        }
+    )
+    lim_issues = engine.validate_feature(bare_lim_feat, "cycle")
+    lim_warn = next((i for i in lim_issues if i.rule_id == "RULE_LIMIT_UNIT_MISSING"), None)
+    assert lim_warn is not None
+    assert lim_warn.severity == IssueSeverity.WARNING

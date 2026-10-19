@@ -18,15 +18,30 @@ validation:
     margin_degrees: 0.25
 
   # format constraints
-  icao_format: "^[A-Z]{4}$"
   runway_designator_format: "^(0[1-9]|[12][0-9]|3[0-6])[LCR]?$"
-  waypoint_format: "^WPT/[A-Z0-9]{3,5}$"
+
+  # format constraints mapped by featureType string
+  natural_key_formats:
+    aerodrome: "^[A-Z]{4}$"
+    waypoint: "^WPT/[A-Z0-9]{3,5}$"
+    navaid: "^NAV/[A-Z0-9]{2,5}$"
+    route: "^RTE/[A-Z]{1,2}[0-9]{1,4}$"
+    airspace: "^ASP/"
+    specialUseArea: "^SUA/"
+    runwayDirection: "^[A-Z]{4}/RWY/(0[1-9]|[12][0-9]|3[0-6])[LCR]?$"
+    runway: "^[A-Z]{4}/RWY/(0[1-9]|[12][0-9]|3[0-6])[LCR]?-(0[1-9]|[12][0-9]|3[0-6])[LCR]?$"
 
   # declared distance integrity checks
   declared_distances:
     require_tora_le_toda: true
     require_asda_ge_tora: true
     require_lda_positive: true
+
+  # semantic integrity rules (config-gated)
+  rules:
+    require_resolved_waypoints: false
+    require_unique_natural_keys: true
+    require_limit_units: true
 
   # promotion gate thresholds
   promotion_gate:
