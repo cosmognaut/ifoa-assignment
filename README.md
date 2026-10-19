@@ -118,6 +118,8 @@ npm run build      # tsc --noEmit && vite build
 npm run preview
 ```
 
+`npm test` runs the unit suite (Vitest, jsdom and Testing Library) and needs no running services — no API, no MongoDB, no network.
+
 The basemap is the CARTO Dark Matter vector style. The CARTO API key is optional: `VITE_CARTO_API_KEY` is read from `web/.env.local` (copy `web/.env.example`) and appended to the style URL as `?api_key=…`; without it the app requests the plain style URL, which also loads. `web/.env.local` is gitignored — never commit a key.
 
 ## Known Limitations
