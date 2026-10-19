@@ -95,7 +95,6 @@ export function OverviewView({
     return counts;
   }, [features]);
 
-  const promoted = publication !== null && publication.status === 'promoted';
   const stats = publication !== null && isRecord(publication.stats) ? publication.stats : null;
   const status = publication === null ? '—' : publication.status;
   const manifest =
@@ -168,14 +167,12 @@ export function OverviewView({
               const name = aerodromeName(feature);
               const elevation = aerodromeElevation(feature);
               const runwayCount = runwayCounts.get(key) ?? 0;
-              const footer = promoted
-                ? 'promoted'
-                : `${runwayCount} ${runwayCount === 1 ? 'runway' : 'runways'}`;
               return (
                 <button
                   type="button"
                   key={key}
                   className="overview-card"
+                  aria-label={`Open ${name ?? key} operational summary`}
                   onClick={() => onSelectAerodrome(key)}
                 >
                   <span className="overview-card-icao t6">{key}</span>
@@ -186,8 +183,10 @@ export function OverviewView({
                     <span className="overview-card-elev t3 mono">{elevation}</span>
                   )}
                   <span className="overview-card-footer t2">
-                    <span className="overview-dot" aria-hidden="true" />
-                    {footer}
+                    <span>
+                      {runwayCount} {runwayCount === 1 ? 'runway' : 'runways'}
+                    </span>
+                    <span className="overview-card-action">Open summary →</span>
                   </span>
                 </button>
               );

@@ -369,6 +369,7 @@ a {
   border-radius: 8px;
   background: var(--surface-2);
   text-align: left;
+  cursor: pointer;
   transition: border-color 120ms ease;
 }
 
@@ -390,18 +391,22 @@ a {
 
 .overview-card-footer {
   display: flex;
+  justify-content: space-between;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
+  width: 100%;
   margin-top: 12px;
   color: var(--text-secondary);
 }
 
-.overview-dot {
-  flex: 0 0 auto;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--accent);
+.overview-card-action {
+  color: var(--text-muted);
+  transition: color 120ms ease, transform 120ms ease;
+}
+
+.overview-card:hover .overview-card-action {
+  color: var(--accent);
+  transform: translateX(2px);
 }
 
 .overview-method-grid {

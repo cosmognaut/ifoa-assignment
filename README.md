@@ -96,8 +96,29 @@ Configuration is read from `config/database.yaml` and `config/validation.yaml`, 
 | `GET /api/features/:naturalKey` | One feature, e.g. `EBBR/RWY/25L` |
 | `GET /api/airports/:icao` | `{aerodrome, runwayDirections, runways}` |
 | `GET /api/changes?from=&to=` | Field-level diff rows between two cycles |
+| `GET /api/issues` | Validation issues; filters: `publicationId`, `featureKey`, `severity` |
 
 Of 619 features, 395 carry geometry and 224 (`airspace`, `specialUseArea`) have `geometry: null` by design. `/api/features` therefore returns **all** matching features by default and leaves `geometry` null; map clients pass `withGeometry=true` to receive only the 395 drawable ones. Provenance keys inside `fields` are passed through unmodified (snake_case preserved, `999/UNL` sentinel untouched).
+
+## Web console (`web/`)
+
+`web/` is the reader for this dataset: React 19, TypeScript and Vite, talking only to the read-only API above. Nothing in the browser writes to the database.
+
+- **Shell**: a 72px top bar, a docked 400px inspector, and three tabs — Overview, Map, Register. The Airport view is not in the tab strip; it opens when an aerodrome card on the Overview is clicked.
+- **Map**: MapLibre GL (it replaced Leaflet). The module is imported lazily, so it sits in its own chunk and only loads when the Map tab is opened.
+- **Type**: fonts are self-hosted woff2 files under `web/public/fonts` — Clash Grotesk, Clash Display, IBM Plex Mono — declared in `web/src/styles/tokens.css`. No font CDN is contacted at runtime.
+
+Prerequisites: Node 20.19+ (Vite 7's floor) and the API service above running on `localhost:3000`, which itself needs MongoDB with a cycle loaded. If the API is unreachable the console still mounts, but every view resolves to its loading, empty or error state instead of data.
+
+```bash
+cd web
+npm ci
+npm run dev        # http://localhost:5173, /api proxied to :3000
+npm run build      # tsc --noEmit && vite build
+npm run preview
+```
+
+The basemap is the CARTO Dark Matter vector style. The CARTO API key is optional: `VITE_CARTO_API_KEY` is read from `web/.env.local` (copy `web/.env.example`) and appended to the style URL as `?api_key=…`; without it the app requests the plain style URL, which also loads. `web/.env.local` is gitignored — never commit a key.
 
 ## Known Limitations
 1. **Section Coverage Scope**: Currently parses AD 2.2, AD 2.3, AD 2.6, AD 2.12, AD 2.13 for configured aerodromes (EBBR, EBCI, EBLG), ENR 4.1 (Radio Navigation Aids), ENR 4.4 (Significant Points / Waypoints), ENR 3.2 (Upper ATS Routes), ENR 2.1 (Airspace), and ENR 5.1/5.2 (Special-Use Airspace). ENR 3.1 publishes zero route tables in Belgian airspace (explicitly published by skeyes as `NIL`). GEN 0.2 and GEN 2.5 are downloaded during discovery to verify amendment schedules but are not parsed into domain feature entities. AD 2.19 (Airport ILS / localizer tables) is indexed in discovery but not yet converted to features; aerodrome navigation relies on the en-route radio aid dataset.
