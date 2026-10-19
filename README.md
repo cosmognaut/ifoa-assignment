@@ -21,6 +21,15 @@ From a clean clone, run the following commands in sequence:
 uv run python -m pipeline.cli check-updates
 
 # 2. Fetch a cycle (downloads raw HTML byte-for-byte with polite 1 req/s rate limit)
+#    NOTE: a live fetch is currently REFUSED. https://ops.skeyes.be/robots.txt returns
+#    "User-Agent: *" / "Disallow: /", so the crawler enumerates the 12 documents and then
+#    refuses every one (blocked_by_robots, 0 bytes) — it is behaving correctly. The
+#    committed data/raw/2026-10-01-current/ is the snapshot every later step uses, so
+#    skip step 2. A blocked run writes nothing and exits non-zero: an existing manifest
+#    is never overwritten. An authorised refresh uses --from-dir <dir> or --from-zip <archive>.
+#    Note also that `ingest fetch` targets the publisher, so it wants a discovered id
+#    (2026-10-01, 2026-10-01-previous, 2026-10-29); 2026-10-01-current is the local
+#    snapshot name the other steps use.
 uv run python -m pipeline.cli ingest fetch --cycle 2026-10-01-current
 
 # 3. Verify cryptographic integrity of cached files against manifest.jsonl SHA-256

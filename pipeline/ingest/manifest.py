@@ -69,8 +69,16 @@ class ManifestManager:
 
         errors = []
         for item in items:
-            p = Path(item.local_path)
-            if not p.exists():
+            # `Path("")` is `Path(".")`, which exists: a blank local_path must be reported
+            # as missing rather than opened, or verify_manifest raises IsADirectoryError.
+            raw_path = item.local_path.strip()
+            if raw_path == "":
+                errors.append(
+                    f"Missing file: <empty local_path> for {item.url} (expected {item.sha256})"
+                )
+                continue
+            p = Path(raw_path)
+            if not p.is_file():
                 errors.append(f"Missing file: {p} (expected {item.sha256})")
                 continue
             with open(p, "rb") as f:

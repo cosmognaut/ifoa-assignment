@@ -154,6 +154,9 @@ Nothing to parse in this cycle: the published document states `NIL`, and the spe
 **3.9 "So you only parse upper routes?"**
 Correct. ENR 3.2 is parsed into 51 route features; ENR 3.1 is `NIL` this cycle. If a future cycle publishes lower routes, the section spec needs fields and the route parser needs a second spec — the dispatch is per section, not hardcoded.
 
+**3.10 "Does the crawler work right now?"**
+It runs, and it refuses. `ingest cycles` resolves all three published editions (`2026-10-01`, `2026-10-01-previous`, `2026-10-29`), `ingest fetch` enumerates that cycle's 12 documents — and then every `fetch_url` returns `blocked_by_robots` with 0 bytes, because `https://ops.skeyes.be/robots.txt` is `User-Agent: *` / `Disallow: /` when requested with this project's User-Agent. That is the crawler working correctly: the polite path is the point (ADR 4). The committed snapshot in `data/raw/2026-10-01-current/` was captured before that policy took effect — its manifest still says 12 × `fetched` — and a blocked re-fetch now writes nothing and exits 1 rather than overwriting it. Refreshing needs the publisher's official offline package, `ingest fetch --from-dir` or `--from-zip`; the live portal is not ours to override.
+
 ---
 
 ## Section 4 — traps
@@ -164,6 +167,7 @@ Say the left thing and you lose the room; say the right thing and you look like 
 |---|---|
 | "The map shows the airspace." | "The map shows point and line features — aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 224 features that have no geometry." |
 | "There are about 70 tests." | "81: 37 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 18 web (Vitest + jsdom, hermetic)." |
+| "Let me re-fetch it live so you can see." | "A live fetch is refused — `robots.txt` disallows automated access — so there is nothing to watch. The committed snapshot in `data/raw/2026-10-01-current/` is what the API and the console are serving." |
 | "The pipeline runs on a schedule." | "It does not. `check-updates` is a command a human runs; there is no cron entry and no CI config — `.github/` does not exist in the repo." |
 | "The system is live for users." | "Nothing is live: MongoDB, the Node API and Vite all run locally on 27017 / 3000 / 5173, and nothing starts them for you. The dataset is also committed as `data/export/2026-10-01-current/` so it can be inspected with nothing running at all." |
 | "I wrote every line." | "I directed an LLM to write most of the code and I built the verification around it: the SHA-256 manifest chain, the golden-value tests transcribed from the real AIP HTML, the declarative validation rules, and 81 tests I can run in one command. Where my prose and the code disagreed, I fixed the prose — every number in the docs carries the command that produced it." |
@@ -189,9 +193,10 @@ For the LLM answer, have one concrete example ready: the coordinate display. The
 | Web entry chunk | 252.11 kB, **77.69 kB gzip**; map chunk 1,061.45 kB (290.08 kB gzip) |
 | API endpoints | **8** read-only (7 `app.get('/api/…')` routes + 1 regex route for slash-bearing natural keys) |
 | ADRs | **27** (`DECISION_LOG.md`) |
-| Known limits documented | **7** (`ARCHITECTURE.md` → Known limits) |
+| Known limits documented | **8** (`ARCHITECTURE.md` → Known limits) |
 | Register rows | 224 (all airspace + special-use areas) |
 | Promotion gate | 0 errors · 100 warnings · 0.0 % disappeared runways · 5.0 % disappeared features |
+| Live crawl | **refused**: `robots.txt` is `User-Agent: *` / `Disallow: /`; 12 documents enumerated, 0 bytes fetched |
 
 Commands that produce the above, if asked to show your work:
 

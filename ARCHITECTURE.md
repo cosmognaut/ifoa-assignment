@@ -58,6 +58,7 @@ The decision (ADR 16) is to extract the attributes, keep the prose verbatim in `
 - **NOTAM and AIP SUP are modelled but not ingested** — `sourceClass` has `SUP` and `NOTAM`; no such feed is fetched.
 - **`effectiveTo` is unpopulated** — all 619 features carry `null`; supersession logic exists in `MongoLoader.promote_publication` but has never had a second real cycle.
 - **The diff has not run across two real cycles** — only `2026-10-01-current` is present; the engine is established by unit tests, not production history.
+- **A live crawl is refused by the publisher** — `https://ops.skeyes.be/robots.txt` returns `User-Agent: *` / `Disallow: /`, so the crawler enumerates a cycle's 12 documents and then refuses every one (`blocked_by_robots`, 0 bytes), which is the polite behaviour it was built for. The committed `data/raw/2026-10-01-current/` snapshot predates that enforcement; a refresh is supported through the official offline package (`ingest fetch --from-dir` / `--from-zip`), not through the live portal.
 
 ## Why these choices
 

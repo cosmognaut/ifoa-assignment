@@ -38,6 +38,31 @@ class ExportError(RuntimeError):
     """A cycle cannot be exported: unknown cycle, or a cycle with no features."""
 
 
+# Statuses the crawler emits when it produced a usable document on disk. Anything
+# else (blocked_by_robots, failed_http_*, error: ..., failed_file_not_*) is a failure.
+USABLE_FETCH_STATUSES = frozenset(
+    {"fetched", "fetched_from_zip", "fetched_from_dir", "not_modified", "cached"}
+)
+
+
+def summarise_fetch_results(
+    items: List[Dict[str, Any]],
+) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+    """Split crawler results into (usable, failed) by status.
+
+    Pure: no I/O, no network, no config. This is the decision that stops a failed
+    crawl from overwriting a committed manifest (see cmd_ingest_fetch).
+    """
+    usable: List[Dict[str, Any]] = []
+    failed: List[Dict[str, Any]] = []
+    for item in items:
+        if item.get("status") in USABLE_FETCH_STATUSES:
+            usable.append(item)
+        else:
+            failed.append(item)
+    return usable, failed
+
+
 def _cache_dir(args=None) -> Path:
     """The raw cache root, single-sourced from crawler.yaml with CLI override."""
     if args and getattr(args, "cache_dir", None):
@@ -110,7 +135,12 @@ def cmd_ingest_cycles(args):
     print(json.dumps(cycles, indent=2))
 
 def cmd_ingest_fetch(args):
-    """Fetches documents for a cycle and writes manifest.jsonl and publication_meta.json."""
+    """Fetches documents for a cycle and writes manifest.jsonl and publication_meta.json.
+
+    Writes nothing when the run produced no usable document: overwriting a committed
+    manifest with a run of `blocked_by_robots` rows would destroy the SHA-256 chain of
+    custody for a snapshot that is still good on disk (ADR 3).
+    """
     cycle_id = args.cycle
     cache_dir = _cache_dir(args)
     from_zip = Path(args.from_zip) if getattr(args, "from_zip", None) else None
@@ -136,7 +166,6 @@ def cmd_ingest_fetch(args):
             sys.exit(1)
 
     print(f"Discovered cycle metadata: {cycle_match['amendment_id']} effective {cycle_match['effective_date']}")
-    _save_publication_meta(cache_dir, cycle_id, cycle_match)
 
     sections = discovery.discover_sections_for_cycle(cycle_match) if not (from_zip or from_dir) else []
     # If offline, generate document list from sections.yaml directly
@@ -183,6 +212,38 @@ def cmd_ingest_fetch(args):
         print(f"    -> Status: {res['status']} | Size: {res['bytes_length']} bytes | SHA256: {res['sha256'][:12]}...")
         manifest_items.append(res)
 
+    usable, failed = summarise_fetch_results(manifest_items)
+
+    if not manifest_items:
+        print(
+            f"Error: no documents were enumerated for cycle '{cycle_id}'. Nothing written.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if not usable:
+        if all(item.get("status") == "blocked_by_robots" for item in failed):
+            reason = f"every document was refused by robots.txt (status blocked_by_robots, {len(failed)} documents)"
+        else:
+            reason = f"no document could be fetched ({len(failed)} failed)"
+        print(f"\n[Pipeline] Fetch produced nothing usable: {reason}.", file=sys.stderr)
+        for item in failed:
+            print(f"[Pipeline]   {item.get('section_id')}: {item.get('status')}", file=sys.stderr)
+        print(
+            f"[Pipeline] Refusing to write {cache_dir}/{cycle_id}/manifest.jsonl — "
+            "the existing manifest and cached documents are untouched.",
+            file=sys.stderr,
+        )
+        sys.exit(1)
+
+    if failed:
+        failed_ids = ", ".join(str(item.get("section_id")) for item in failed)
+        print(
+            f"\n[Pipeline] WARNING: partial fetch — {len(usable)} usable, {len(failed)} failed ({failed_ids})",
+            file=sys.stderr,
+        )
+
+    _save_publication_meta(cache_dir, cycle_id, cycle_match)
     manifest_sha = ManifestManager.write_manifest(str(cache_dir), cycle_id, manifest_items)
     print(f"\nManifest written to: {cache_dir}/{cycle_id}/manifest.jsonl")
     print(f"Manifest SHA-256: {manifest_sha}")

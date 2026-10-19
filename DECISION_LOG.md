@@ -48,9 +48,13 @@ This document records the architectural, data modeling, and engineering decision
   1. In `config/crawler.yaml`, declare `user_agent_format` with a `{contact_email}` placeholder and configure `contact_email`.
   2. Enforce `respect_robots_txt: true` by parsing `ops.skeyes.be/robots.txt` using `urllib.robotparser` and checking `can_fetch()`.
   3. Enforce a strict 1.0-second delay between live requests, combined with exponential backoff retries (`max_retries: 3`, `retry_backoff_seconds: 2.0`) on network timeouts and 5xx errors.
+  4. `cmd_ingest_fetch` writes `manifest.jsonl` only when the run produced at least one usable document (`fetched`, `fetched_from_zip`, `fetched_from_dir`, `not_modified`, `cached`). A run in which nothing was usable writes no manifest, names the reason, and exits non-zero; a partial run writes the manifest and prints a warning naming the failed section ids.
 * **Reasoning**:
   - Azure WAF rules block requests lacking browser-standard navigation headers or using known generic scraper strings. Supplying standard HTTP headers satisfies WAF format validation without stealth evasion techniques.
   - RFC 9309 and RFC 7231 §5.5.3 compliance: If network administrators detect high bandwidth usage, the User-Agent provides an honest email address to contact the operator directly.
+  - *Robots enforcement is now the binding constraint, not the WAF.* Fetched with the configured User-Agent, `https://ops.skeyes.be/robots.txt` returns `200` and the body `User-Agent: *` / `Disallow: /`. The crawler parses it and `can_fetch()` refuses every document, so a live crawl of the HTML portal returns `blocked_by_robots` with 0 bytes for all 12 documents. A live crawl is therefore refused **by design**, not broken. Refreshing a cycle goes through the official offline package — `ingest fetch --from-dir <dir>` or `--from-zip <archive>`, which exist for exactly this case — and never through the live portal.
+  - *The committed snapshot predates enforcement.* `data/raw/2026-10-01-current/manifest.jsonl` records 12 `fetched` documents (5,346,418 bytes) at `2026-10-19T15:37`; the same request today is refused. That manifest is the chain of custody for the shipped dataset and is why point 4 exists: a blocked re-fetch must not overwrite it. Point 4 was added after a blocked run replaced all 12 rows and `ingest verify` then crashed on the empty `local_path` values.
+  - *Unavailable is not permission.* When `robots.txt` is not `200` (for example a WAF `403`), `_init_robots` sets `allow_all` — the RFC 9309 reading of an unreachable robots file — and now prints which branch it took. That fallback is deliberately visible rather than silent, because it is the difference between "the publisher allows this" and "we could not ask".
 
 ---
 

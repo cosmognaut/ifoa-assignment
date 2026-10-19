@@ -52,10 +52,18 @@ class PoliteCrawler:
             resp = self.client.get(robots_url)
             if resp.status_code == 200:
                 self._robot_parser.parse(resp.text.splitlines())
+                print(f"[Crawler] parsed robots.txt ({robots_url}, {resp.status_code})")
             else:
+                # RFC 9309: an unavailable robots.txt is not permission, it is simply
+                # unavailable. Keep the permissive reading, but say so out loud: a
+                # WAF 403 here silently turns robots enforcement off for the run.
                 self._robot_parser.allow_all = True
-        except Exception:
+                print(
+                    f"[Crawler] robots.txt returned {resp.status_code}; treating as unavailable per RFC 9309"
+                )
+        except Exception as exc:
             self._robot_parser.allow_all = True
+            print(f"[Crawler] robots.txt request failed ({exc}); treating as unavailable per RFC 9309")
 
     def _rate_limit(self):
         now = time.time()
