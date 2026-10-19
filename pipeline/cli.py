@@ -407,6 +407,34 @@ def _parse_airport_summary(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[O
         retrieved_at=retrieved_at
     )
 
+def _parse_airport_navaids(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    """AD 2.19 radio navigation and landing aids (ILS LOC/GP/DME, DVOR/DME, VOR, NDB) for one airport."""
+    sections_cfg = load_sections_config()
+    ad19_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.19"), None)
+    if not ad19_spec:
+        return [], []
+    template = require_str(ad19_spec, "file_template", "sections.yaml AD-2.19")
+    doc_path = cache_dir / cycle_id / template.format(icao=icao)
+    if not doc_path.exists():
+        return [], []
+
+    manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+    doc_meta = next((item for item in manifest_items if item.section_id == f"AD-2.{icao}"), None)
+    source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+    retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    effective_date = meta.get("effective_date", cycle_id[:10])
+
+    parser = NavaidParser(cycle_id=cycle_id, effective_date=effective_date)
+    return parser.parse_airport_navaids(
+        icao=icao,
+        html_content=doc_path.read_text(encoding="utf-8"),
+        document_filename=doc_path.name,
+        source_url=source_url,
+        retrieved_at=retrieved_at
+    )
+
 def _parse_airspaces(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
     sections_cfg = load_sections_config()
     asp_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "ENR-2.1"), None)
@@ -508,6 +536,10 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
             if ap_feat:
                 all_features.append(ap_feat)
             all_issues.extend(ap_issues)
+
+            nav19_feats, nav19_issues = _parse_airport_navaids(cycle_id, icao, cache_dir)
+            all_features.extend(nav19_feats)
+            all_issues.extend(nav19_issues)
         except FileNotFoundError as e:
             if explicit_icao:
                 raise e

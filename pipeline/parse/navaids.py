@@ -1,6 +1,7 @@
 """
 Declarative parser for Radio Navigation Aids:
 - ENR 4.1 Radio Navigation Aids - En-Route (VOR, DME, TACAN, NDB)
+- AD 2.19 Radio Navigation and Landing Aids (ILS LOC/GP/DME, DVOR/DME, VOR, NDB)
 """
 import re
 from typing import List, Tuple, Dict, Any, Optional
@@ -29,7 +30,28 @@ class NavaidParser:
         self.type_tokens = sections_cfg.get("navaid_type_tokens", {})
         sections_list = sections_cfg.get("sections", [])
         self.spec_enr = next((s for s in sections_list if s["id"] == "ENR-4.1"), {})
+        self.spec_ad19 = next((s for s in sections_list if s["id"] == "AD-2.19"), {})
         self.dme_unit = self.spec_enr.get("fields", {}).get("dmeElevation", {}).get("unit")
+        self.dme_unit_ad19 = require(
+            require(self.spec_ad19, "fields", "sections.yaml AD-2.19"),
+            "dmeElevation",
+            "sections.yaml AD-2.19 fields",
+        )["unit"]
+
+        # ILS sub-rows are components of the caption above them; the caption is the only
+        # place the category is published, and only the LOC row carries the ILS identifier.
+        self.ils_component_tokens: Tuple[str, ...] = tuple(
+            require(sections_cfg, "ils_component_tokens", "sections.yaml")
+        )
+        self.re_ils_caption = re.compile(
+            require_str(
+                require(sections_cfg, "converters_regex", "sections.yaml"),
+                "ils_caption",
+                "sections.yaml converters_regex",
+            )
+        )
+        # A designator is an ICAO aid identifier: 2-5 upper-case alphanumerics.
+        self.re_designator = re.compile(r"^[A-Z0-9]{2,5}$")
 
         regex_cfg = sections_cfg.get("converters_regex", {})
         self.re_mhz = re.compile(regex_cfg.get("frequency_mhz", "(\\d+(?:\\.\\d+)?)\\s*MHZ"))
@@ -241,4 +263,190 @@ class NavaidParser:
             navaid_map[nat_key] = feat
 
         features = list(navaid_map.values())
+        return features, issues
+
+    # ------------------------------------------------------------------
+    # AD 2.19 — airport radio navigation and landing aids
+    #
+    # The table mixes two row shapes: a flat aid carries the label in the first
+    # cell (7 populated cells, "DVOR / DME (2°/2025) | BUB | 114.600 MHZ CH 93X |
+    # …"), while an ILS sub-row is introduced by an extra empty cell and belongs
+    # to the single-cell caption above it ("ILS 01 ( CAT I)"). Only the LOC row
+    # publishes the ILS identifier; GP inherits it, DME repeats it.
+    #
+    # Natural keys: NAV/{ICAO}/{designator}. Because LOC and DME of one ILS share
+    # a designator, the second and later component of a designator appends its own
+    # initial ("IBX" LOC, "IBXG" GP, "IBXD" DME) — still 2-5 alphanumerics, so it
+    # matches natural_key_formats.navaid and no component is dropped or merged.
+    # ------------------------------------------------------------------
+    def parse_airport_navaids(
+        self,
+        icao: str,
+        html_content: str,
+        document_filename: str,
+        source_url: str,
+        retrieved_at: str
+    ) -> Tuple[List[Feature], List[ValidationIssue]]:
+        features: List[Feature] = []
+        issues: List[ValidationIssue] = []
+        section_label = f"{icao} AD 2.19"
+
+        anchor = require_str(self.spec_ad19, "anchor_template", "sections.yaml AD-2.19").format(icao=icao)
+        soup = BeautifulSoup(html_content, "html.parser")
+        div = soup.find(id=anchor)
+        if not div:
+            for h in soup.find_all(["h2", "h3", "h4", "h5"]):
+                if "AD 2.19" in h.get_text():
+                    div = h.find_parent("div")
+                    break
+
+        if not div:
+            issues.append(ValidationIssue(
+                publication_id=self.cycle_id,
+                severity=IssueSeverity.ERROR,
+                rule_id="RULE_MISSING_SECTION",
+                feature_key=icao,
+                section=section_label,
+                message=f"Missing section AD 2.19 Radio Navigation and Landing Aids in {document_filename}",
+                raw_snippet=""
+            ))
+            return features, issues
+
+        table = div.find("table")
+        if not table:
+            issues.append(ValidationIssue(
+                publication_id=self.cycle_id,
+                severity=IssueSeverity.ERROR,
+                rule_id="RULE_MISSING_TABLE",
+                feature_key=icao,
+                section=section_label,
+                message=f"Table not found in section AD 2.19 of {icao}",
+                raw_snippet=""
+            ))
+            return features, issues
+
+        def make_field(value: Any, unit: Optional[str], raw_text: str) -> FeatureField:
+            return FeatureField(
+                value=value,
+                unit=unit,
+                source=self.publisher_name,
+                section=section_label,
+                effective_date=self.effective_date,
+                retrieved_at=retrieved_at,
+                source_url=source_url,
+                parser_version=PARSER_VERSION,
+                raw_text=raw_text
+            )
+
+        ils_category: Optional[str] = None
+        ils_designator: Optional[str] = None
+        used_keys: Dict[str, str] = {}
+
+        for tr in table.find_all("tr"):
+            cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
+            if not cells:
+                continue
+
+            # Group caption: "ILS 01 ( CAT I)" — sets the context for the rows below.
+            if len(cells) == 1:
+                caption = self.re_ils_caption.match(cells[0])
+                ils_category = caption.group(1).strip() if caption else None
+                ils_designator = None
+                continue
+
+            # ILS sub-rows carry a leading empty cell; shift it away so both shapes
+            # share one column mapping.
+            if len(cells) >= 8 and cells[0] == "":
+                cells = cells[1:]
+            if len(cells) < 7:
+                continue
+
+            label = cells[0].strip()
+            designator_raw = cells[1].strip()
+            freq_raw = cells[2].strip()
+            hours_raw = cells[3].strip()
+            coord_raw = cells[4].strip()
+            dme_elev_raw = cells[5].strip()
+            remarks_raw = cells[6].strip()
+
+            # Header and column-numbering rows carry no designator and no type token.
+            if label.lower().startswith("type of aid"):
+                continue
+            if label.isdigit():
+                continue
+
+            is_component = label.upper() in self.ils_component_tokens and ils_category is not None
+            aid_type = self.derive_navaid_type(label if not is_component else label.upper())
+            if designator_raw == "" and ils_designator is not None and is_component:
+                designator = ils_designator  # GP publishes no identifier of its own
+            elif self.re_designator.match(designator_raw.upper()):
+                designator = designator_raw.upper()
+            else:
+                continue  # marker beacons ("dash / dash") and anything unidentifiable
+
+            if not is_component and aid_type == self.type_tokens.get("default", "OTHER"):
+                continue
+
+            parsed_coords, _ = CONVERTER_REGISTRY["coordinates"](coord_raw)
+            if not parsed_coords:
+                issues.append(ValidationIssue(
+                    publication_id=self.cycle_id,
+                    severity=IssueSeverity.WARNING,
+                    rule_id="RULE_COORDINATE_FORMAT",
+                    feature_key=f"NAV/{icao}/{designator}",
+                    section=section_label,
+                    message=(
+                        f"Failed to parse DMS coordinates '{coord_raw}' for "
+                        f"{icao} aid {designator or label}"
+                    ),
+                    raw_snippet=coord_raw
+                ))
+                continue
+
+            base_key = f"NAV/{icao}/{designator}"
+            nat_key = base_key
+            if nat_key in used_keys:
+                nat_key = f"{base_key}{label[0].upper()}"
+            if nat_key in used_keys:
+                continue  # defensive: never overwrite an emitted feature
+            used_keys[nat_key] = designator
+
+            if is_component and label.upper() == "LOC":
+                ils_designator = designator
+
+            num_freq, freq_unit = self.parse_frequency(freq_raw)
+            dme_elev_val, _ = CONVERTER_REGISTRY["elevation"](dme_elev_raw)
+
+            fields: Dict[str, FeatureField] = {
+                "designator": make_field(designator, None, designator_raw or designator),
+                "aidType": make_field(aid_type, None, label),
+                "frequencyRaw": make_field(freq_raw, None, freq_raw),
+                "frequency": make_field(num_freq, freq_unit, freq_raw),
+                "frequencyUnit": make_field(freq_unit, None, freq_unit or ""),
+                "hours": make_field(hours_raw, None, hours_raw),
+                "associatedAirport": make_field(icao, None, icao),
+            }
+            if dme_elev_val is not None:
+                fields["dmeElevation"] = make_field(dme_elev_val, self.dme_unit_ad19, dme_elev_raw)
+            if remarks_raw and remarks_raw.upper() != "NIL":
+                fields["remarks"] = make_field(remarks_raw, None, remarks_raw)
+            if is_component:
+                fields["ilsCategory"] = make_field(ils_category, None, ils_category or "")
+                fields["component"] = make_field(label.upper(), None, label)
+
+            geom = GeoJSONGeometry(type="Point", coordinates=list(parsed_coords))
+            features.append(Feature(
+                feature_type=FeatureType.NAVAID,
+                natural_key=nat_key,
+                parent_key=icao,
+                publication_id=self.cycle_id,
+                effective_from=self.effective_date,
+                effective_to=None,
+                source_class=SourceClass.AIP,
+                temporality=Temporality.PERMANENT,
+                geometry=geom,
+                content_hash=compute_content_hash(fields, geom.model_dump()),
+                fields=fields
+            ))
+
         return features, issues

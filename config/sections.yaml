@@ -33,6 +33,7 @@ converters_regex:
   distance: "(\\d+(?:[\\s\\u2009\\xa0]\\d+)?)"
   frequency_mhz: "(\\d+(?:\\.\\d+)?)\\s*MHZ"
   frequency_ch: "CH\\s*(\\d+)[XY]?"
+  ils_caption: "^ILS\\b.*?\\(\\s*(CAT\\s*[IVX]+)\\s*\\)"
   limit_flight_level: "^FL\\s*(\\d+)$"
   limit_altitude: "^(\\d+(?:\\.\\d+)?)\\s*(FT|M)\\s*(AMSL|AGL|SFC)?$"
   limit_bare_number: "^(\\d+(?:\\.\\d+)?)$"
@@ -65,6 +66,14 @@ vertical_limits:
   surface_unit: "FT"
   surface_reference: "SFC"
   default_altitude_reference: "AMSL"
+
+# AD 2.19 groups LOC/GP/DME sub-rows under a single-cell caption ("ILS 01 ( CAT I)").
+# The caption is the only place the ILS category is published; these two keys are
+# what the navaid parser reads to interpret it. No facility names, no aerodrome codes.
+ils_component_tokens:
+  - "LOC"
+  - "GP"
+  - "DME"
 
 navaid_type_tokens:
   "DVOR / DME": "DVOR/DME"
@@ -352,6 +361,12 @@ sections:
         unit: "FT"
       remarks:
         header_pattern: "remarks"
+        converter: "text"
+      ilsCategory:
+        source: "caption"
+        converter: "text"
+      component:
+        source: "row-label"
         converter: "text"
 
   - id: "AD-2.20"
