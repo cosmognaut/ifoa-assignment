@@ -40,6 +40,14 @@ surface_mapping:
   grass: "GRAS"
   default: "OTHER"
 
+vertical_limit_tokens:
+  - "FL"
+  - "FT"
+  - "M"
+  - "UNL"
+  - "SFC"
+  - "GND"
+
 navaid_type_tokens:
   "DVOR / DME": "DVOR/DME"
   "DVOR/DME": "DVOR/DME"

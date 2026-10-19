@@ -13,7 +13,7 @@ from pipeline.models.feature import (
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.utils.hash_utils import compute_content_hash
 from pipeline.parse.converters import CONVERTER_REGISTRY
-from pipeline.config import load_crawler_config, load_sections_config
+from pipeline.config import load_crawler_config, load_sections_config, require, require_str
 
 PARSER_VERSION = "1.0"
 
@@ -23,7 +23,7 @@ class NavaidParser:
         self.effective_date = effective_date
 
         crawler_cfg = load_crawler_config()
-        self.publisher_name = crawler_cfg.get("publisher", {}).get("name") or crawler_cfg.get("publisher_name", "Belgium & Luxembourg eAIP")
+        self.publisher_name = require_str(require(crawler_cfg, "publisher", "crawler.yaml"), "name", "crawler.yaml publisher")
 
         sections_cfg = load_sections_config()
         self.type_tokens = sections_cfg.get("navaid_type_tokens", {})

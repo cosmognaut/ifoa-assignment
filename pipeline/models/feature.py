@@ -35,7 +35,7 @@ class FeatureField(BaseModel):
     """
     value: Any = Field(description="Parsed typed value (float, int, str, dict, etc.)")
     unit: Optional[str] = Field(default=None, description="Physical unit e.g. 'M', 'FT', 'DEG'")
-    source: str = Field(default="Belgium AIP", description="Authoritative source e.g. 'Belgium AIP'")
+    source: str = Field(description="Authoritative source e.g. from crawler.yaml publisher.name")
     section: str = Field(description="Exact AIP section e.g. 'EBBR AD 2.12', 'EBBR AD 2.13'")
     effective_date: str = Field(description="AIP effective date YYYY-MM-DD")
     retrieved_at: str = Field(description="ISO timestamp YYYY-MM-DDTHH:MM:SSZ when raw document was fetched")

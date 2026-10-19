@@ -39,7 +39,7 @@ validation:
 
   # semantic integrity rules (config-gated)
   rules:
-    require_resolved_waypoints: false
+    require_resolved_waypoints: true
     require_unique_natural_keys: true
     require_limit_units: true
 

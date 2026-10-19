@@ -156,10 +156,13 @@ def cmd_ingest_fetch(args):
     crawler = PoliteCrawler(cache_dir=cache_dir)
     manifest_items = []
 
+    base_url = require_str(load_crawler_config(), "base_product_url", "crawler.yaml")
+    from urllib.parse import urljoin
+
     for s in sections:
         fname = s["document_filename"]
         sec_id = s["section_id"]
-        url = s.get("url", f"https://ops.skeyes.be/{fname}")
+        url = s.get("url") or urljoin(base_url, fname)
 
         if from_zip:
             print(f"  Extracting from ZIP: {fname}")
@@ -313,7 +316,9 @@ def _parse_waypoints(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], Lis
 def _parse_airport_summary(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[Optional[Feature], List[ValidationIssue]]:
     sections_cfg = load_sections_config()
     ad22_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.2"), None)
-    template = ad22_spec["file_template"] if ad22_spec else "EB-AD-2.{icao}-en-GB.html"
+    if not ad22_spec:
+        return None, []
+    template = require_str(ad22_spec, "file_template", "sections.yaml AD-2.2")
     doc_path = cache_dir / cycle_id / template.format(icao=icao)
     if not doc_path.exists():
         return None, []
@@ -439,6 +444,8 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
         except FileNotFoundError as e:
             if explicit_icao:
                 raise e
+            ad_spec = next((s for s in load_sections_config().get("sections", []) if s.get("scope") == "per_airport"), {})
+            doc_pattern = ad_spec.get("file_template", "{icao}.html").format(icao=icao)
             all_issues.append(ValidationIssue(
                 publication_id=cycle_id,
                 severity=IssueSeverity.ERROR,
@@ -446,7 +453,7 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
                 feature_key=f"{icao}/RWY",
                 section=f"{icao} AD 2",
                 message=str(e),
-                raw_snippet=f"EB-AD-2.{icao}-en-GB.html"
+                raw_snippet=doc_pattern
             ))
 
     # Parse ENR 4.4 waypoints, ENR 4.1 navaids, and ENR 3.1/3.2 ATS routes if not targeting a single airport

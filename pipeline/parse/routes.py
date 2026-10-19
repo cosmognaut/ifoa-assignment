@@ -14,7 +14,7 @@ from pipeline.models.feature import (
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.utils.hash_utils import compute_content_hash
 from pipeline.parse.converters import CONVERTER_REGISTRY
-from pipeline.config import load_crawler_config, load_sections_config, load_validation_config
+from pipeline.config import load_crawler_config, load_sections_config, load_validation_config, require, require_str
 
 PARSER_VERSION = "1.0"
 
@@ -24,9 +24,10 @@ class RouteParser:
         self.effective_date = effective_date
 
         crawler_cfg = load_crawler_config()
-        self.publisher_name = crawler_cfg.get("publisher", {}).get("name") or crawler_cfg.get("publisher_name", "Belgium & Luxembourg eAIP")
+        self.publisher_name = require_str(require(crawler_cfg, "publisher", "crawler.yaml"), "name", "crawler.yaml publisher")
 
         sections_cfg = load_sections_config()
+        self.limit_tokens = sections_cfg.get("vertical_limit_tokens", ["FL", "FT", "M", "UNL", "SFC", "GND"])
         sections_list = sections_cfg.get("sections", [])
         self.spec_31 = next((s for s in sections_list if s["id"] == "ENR-3.1"), {})
         self.spec_32 = next((s for s in sections_list if s["id"] == "ENR-3.2"), {})
@@ -62,7 +63,6 @@ class RouteParser:
         if not div:
             return features, issues
 
-        # Check for NIL content
         div_text = div.get_text(" ", strip=True)
         if "NIL" in div_text and len(div.find_all("table")) == 0:
             return features, issues
@@ -78,7 +78,7 @@ class RouteParser:
             if not first_tr or "Route designator" not in first_tr.get_text():
                 continue
 
-            # 1. Discover Route Designator & RNP Type
+            # 1. Discover Route Designator & Navigation Specification
             route_desig = None
             rnp_type = None
             for tr in table.find_all("tr")[:15]:
@@ -98,15 +98,23 @@ class RouteParser:
             waypoint_seq: List[str] = []
             upper_limit_parsed = None
             lower_limit_parsed = None
-            controlling_unit_val = None
 
-            # 2. Parse Points and Vertical Limits
+            # Extract controlling unit from route remarks (e.g. "Control units: Brussels ACC (below FL 245), Maastricht UAC...")
+            table_text = table.get_text(" ", strip=True)
+            m_ctrl = re.search(r"Control units?:\s*([^.]+)", table_text, re.IGNORECASE)
+            controlling_unit_val = m_ctrl.group(1).strip() if m_ctrl else None
+
+            # 2. Parse Waypoint Sequence and Vertical Limits
             for tr in table.find_all("tr"):
+                tr_raw = tr.get_text(" ", strip=True)
+                if any(h in tr_raw for h in ("Route designator", "Significant point name", "{RNP type}", "Upper limit Lower limit", "Initial Track")):
+                    continue
+
                 cells = [c.get_text(" ", strip=True) for c in tr.find_all(["td", "th"])]
                 if not cells:
                     continue
 
-                # Point row marked with '∆' or significant point coordinate
+                # Point row marked with '∆'
                 if len(cells) >= 3 and cells[0] == "∆":
                     pt_text = cells[1]
                     m_id = re.search(r"\(([A-Z]{2,4})\)", pt_text)
@@ -122,35 +130,36 @@ class RouteParser:
 
                     # Resolve natural key against known features
                     target_wpt_key = f"WPT/{point_id}"
-                    target_nav_key = f"NAV/{point_id}"
+                    # Match any navaid with this ID regardless of type prefix (e.g. NAV/DVOR_DME/COA or NAV/COA)
+                    matched_nav = next((k for k in known_navs if k.endswith(f"/{point_id}")), None)
 
                     if target_wpt_key in known_wpts:
                         resolved_key = target_wpt_key
-                    elif target_nav_key in known_navs:
-                        resolved_key = target_nav_key
+                    elif matched_nav:
+                        resolved_key = matched_nav
                     else:
                         resolved_key = target_wpt_key
                         if self.require_resolved_waypoints:
                             issues.append(ValidationIssue(
                                 publication_id=self.cycle_id,
-                                severity=IssueSeverity.ERROR,
+                                severity=IssueSeverity.WARNING,
                                 rule_id="RULE_UNRESOLVED_WAYPOINT",
                                 feature_key=nat_key,
                                 section=sec_label,
-                                message=f"Route {route_desig} references unresolved waypoint '{point_id}'",
+                                message=f"Route {route_desig} references cross-border waypoint '{point_id}' absent from national index",
                                 raw_snippet=point_id
                             ))
 
                     waypoint_seq.append(resolved_key)
 
-                # Segment metadata row (limits and controlling unit)
-                if len(cells) >= 8 and ("FL" in " ".join(cells) or "FT" in " ".join(cells) or "UNL" in " ".join(cells)):
-                    for c in cells:
-                        if not upper_limit_parsed and ("FL" in c or "UNL" in c):
-                            u_lim, _ = CONVERTER_REGISTRY["vertical_limit"](c)
-                            if u_lim and u_lim.get("value") is not None:
-                                upper_limit_parsed = u_lim
-                                if self.require_limit_units and (u_lim.get("unit") is None or u_lim.get("reference") is None):
+                # Segment metadata row (limits)
+                for c in cells:
+                    if len(c) < 25 and not c.startswith("Route") and any(tok in c for tok in self.limit_tokens):
+                        lim, _ = CONVERTER_REGISTRY["vertical_limit"](c)
+                        if lim and lim.get("value") is not None:
+                            if not upper_limit_parsed and any(tok in c for tok in ("FL", "UNL")):
+                                upper_limit_parsed = lim
+                                if self.require_limit_units and (lim.get("unit") is None or lim.get("reference") is None):
                                     issues.append(ValidationIssue(
                                         publication_id=self.cycle_id,
                                         severity=IssueSeverity.WARNING,
@@ -160,11 +169,9 @@ class RouteParser:
                                         message=f"Upper vertical limit '{c}' on route {route_desig} missing unit or reference",
                                         raw_snippet=c
                                     ))
-                        if not lower_limit_parsed and ("FL" in c or "FT" in c or "SFC" in c):
-                            l_lim, _ = CONVERTER_REGISTRY["vertical_limit"](c)
-                            if l_lim and l_lim.get("value") is not None and l_lim != upper_limit_parsed:
-                                lower_limit_parsed = l_lim
-                                if self.require_limit_units and (l_lim.get("unit") is None or l_lim.get("reference") is None):
+                            elif not lower_limit_parsed and lim != upper_limit_parsed:
+                                lower_limit_parsed = lim
+                                if self.require_limit_units and (lim.get("unit") is None or lim.get("reference") is None):
                                     issues.append(ValidationIssue(
                                         publication_id=self.cycle_id,
                                         severity=IssueSeverity.WARNING,
@@ -175,11 +182,25 @@ class RouteParser:
                                         raw_snippet=c
                                     ))
 
-                    # Controlling unit in cell with 'Radar' or 'ACC' or 'UAC'
-                    for c in cells:
-                        if any(k in c.upper() for k in ("ACC", "UAC", "RADAR", "CONTROL")):
-                            controlling_unit_val = c
-                            break
+                    # Fallback for controlling unit from segment cell if remarks block did not provide it
+                    if not controlling_unit_val:
+                        for c in cells:
+                            if "{" not in c and any(k in c.upper() for k in ("ACC", "UAC", "RADAR")):
+                                controlling_unit_val = c
+                                break
+
+            # Guard: ensure header text never leaks into controllingUnit
+            if controlling_unit_val and ("{" in controlling_unit_val or "airspace class" in controlling_unit_val.lower()):
+                issues.append(ValidationIssue(
+                    publication_id=self.cycle_id,
+                    severity=IssueSeverity.WARNING,
+                    rule_id="RULE_HEADER_ROW_LEAKED",
+                    feature_key=nat_key,
+                    section=sec_label,
+                    message=f"Header text leaked into controllingUnit on route {route_desig}",
+                    raw_snippet=controlling_unit_val
+                ))
+                controlling_unit_val = None
 
             # Deduplicate sequential waypoints
             clean_seq: List[str] = []

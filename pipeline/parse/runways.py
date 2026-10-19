@@ -13,7 +13,7 @@ from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.utils.hash_utils import compute_content_hash
 from pipeline.parse.converters import CONVERTER_REGISTRY
 from pipeline.config import (
-    load_crawler_config, load_sections_config, load_validation_config)
+    load_crawler_config, load_sections_config, load_validation_config, require, require_str)
 
 PARSER_VERSION = "1.0"
 
@@ -30,7 +30,7 @@ class RunwayParser:
         self.effective_date = effective_date
 
         self.crawler_cfg = load_crawler_config()
-        self.publisher_name = self.crawler_cfg.get("publisher", {}).get("name") or self.crawler_cfg.get("publisher_name", "Belgium & Luxembourg eAIP")
+        self.publisher_name = require_str(require(self.crawler_cfg, "publisher", "crawler.yaml"), "name", "crawler.yaml publisher")
 
         sections_cfg = load_sections_config()
         sections_list = sections_cfg.get("sections", [])
