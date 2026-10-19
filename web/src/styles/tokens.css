@@ -85,4 +85,11 @@
   --font-display: 'Clash Display', 'Clash Grotesk', system-ui, sans-serif;
   --font-sans: 'Clash Grotesk', system-ui, -apple-system, 'Segoe UI', sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', Consolas, monospace;
+
+  --map-aerodrome: #c8ff00;
+  --map-runway: #ffffff;
+  --map-runwaydir: #e5e5e5;
+  --map-navaid: #22d3ee;
+  --map-waypoint: #c084fc;
+  --map-route: #38bdf8;
 }

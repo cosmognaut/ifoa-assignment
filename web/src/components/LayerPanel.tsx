@@ -2,17 +2,15 @@ import { useMemo } from 'react';
 import type { FeatureType, FeatureTypeCount, GeoJsonFeature } from '../types';
 
 const FEATURE_COLOUR_TOKENS: Record<string, string> = {
-  aerodrome: '--accent',
-  navaid: '#D9D9D9',
-  waypoint: '#9A9A9A',
-  runway: '--text-primary',
-  runwayDirection: '#8A8A8A',
-  route: '#6E6E6E',
-  airspace: '--err-fg',
-  specialUseArea: '--err-fg'
+  aerodrome: '--map-aerodrome',
+  navaid: '--map-navaid',
+  waypoint: '--map-waypoint',
+  runway: '--map-runway',
+  runwayDirection: '--map-runwaydir',
+  route: '--map-route'
 };
 
-const FALLBACK_TOKEN = '--text-muted';
+const FALLBACK_TOKEN = '--err-fg';
 
 const tokenCache = new Map<string, string>();
 

@@ -4,43 +4,64 @@ import type { FeatureType, FeatureTypeCount, GeoJsonFeature } from '../types';
 import { LayerPanel, featureColour } from './LayerPanel';
 
 const SELECTION_PANE = 'selection-pane';
-const BG_TOKEN = '--bg';
 const ACCENT_TOKEN = '--accent';
+
+// Draw order inside the shared canvas renderer. Lines first, points last, so a
+// point's 14px hit circle is never shadowed by a line's hit band. Aerodrome is
+// last because it is the largest point feature.
+const TYPE_DRAW_ORDER: FeatureType[] = [
+  'runway',
+  'route',
+  'waypoint',
+  'runwayDirection',
+  'navaid',
+  'aerodrome'
+];
+
+function drawPriority(type: FeatureType): number {
+  const index = TYPE_DRAW_ORDER.indexOf(type);
+  return index === -1 ? TYPE_DRAW_ORDER.length : index;
+}
 
 function cssToken(name: string): string {
   const value = getComputedStyle(document.documentElement).getPropertyValue(name).trim();
   return value === '' ? 'transparent' : value;
 }
 
-function pointRadius(type: FeatureType): number {
+function pointStyle(type: FeatureType, colour: string): L.CircleMarkerOptions {
   switch (type) {
     case 'aerodrome':
-      return 7;
-    case 'navaid':
-      return 4;
-    case 'waypoint':
-      return 2.2;
+      return { radius: 7, color: colour, weight: 2.5, fillColor: colour, fillOpacity: 1 };
     case 'runwayDirection':
-      return 3;
+      return { radius: 4.5, color: colour, weight: 1.5, fillColor: colour, fillOpacity: 1 };
+    case 'navaid':
+      return { radius: 5.5, color: colour, weight: 2, fillOpacity: 0 };
+    case 'waypoint':
+      return { radius: 3.5, color: colour, weight: 0, fillColor: colour, fillOpacity: 0.9 };
     default:
-      return 4;
+      return { radius: 4, color: colour, weight: 1.5, fillColor: colour, fillOpacity: 1 };
   }
 }
 
 function lineOptions(type: FeatureType, colour: string): L.PolylineOptions {
   if (type === 'runway') {
-    return { color: colour, weight: 4, opacity: 0.9 };
+    return { color: colour, weight: 5, opacity: 1 };
   }
   if (type === 'route') {
-    return { color: colour, weight: 1.5, opacity: 0.55, dashArray: '6 4' };
+    return { color: colour, weight: 2, opacity: 0.8, dashArray: '6 4' };
   }
-  return { color: colour, weight: 1.5, opacity: 0.7 };
+  return { color: colour, weight: 2, opacity: 0.8 };
 }
 
-function createFeatureLayer(
+interface FeatureLayers {
+  visual: L.Layer;
+  hit: L.Layer;
+}
+
+function createFeatureLayers(
   feature: GeoJsonFeature,
   onSelect: (naturalKey: string) => void
-): L.Layer {
+): FeatureLayers {
   const geometry = feature.geometry;
   if (geometry === null) {
     throw new Error(
@@ -53,25 +74,34 @@ function createFeatureLayer(
 
   if (geometry.type === 'Point') {
     const [lon, lat] = geometry.coordinates;
-    const marker = L.circleMarker([lat, lon], {
-      radius: pointRadius(featureType),
-      color: colour,
-      weight: featureType === 'aerodrome' ? 2 : 1.5,
-      fillColor: cssToken(BG_TOKEN),
-      fillOpacity: 1
+    const latlng: [number, number] = [lat, lon];
+    const visual = L.circleMarker(latlng, {
+      ...pointStyle(featureType, colour),
+      interactive: false
     });
-    marker.on('click', () => {
+    const hit = L.circleMarker(latlng, {
+      radius: 14,
+      stroke: false,
+      fill: true,
+      fillOpacity: 0,
+      interactive: true
+    });
+    hit.on('click', () => {
       onSelect(naturalKey);
     });
-    return marker;
+    return { visual, hit };
   }
 
   const latLngs: [number, number][] = geometry.coordinates.map(([lon, lat]) => [lat, lon]);
-  const line = L.polyline(latLngs, lineOptions(featureType, colour));
-  line.on('click', () => {
+  const visual = L.polyline(latLngs, {
+    ...lineOptions(featureType, colour),
+    interactive: false
+  });
+  const hit = L.polyline(latLngs, { weight: 14, opacity: 0, interactive: true });
+  hit.on('click', () => {
     onSelect(naturalKey);
   });
-  return line;
+  return { visual, hit };
 }
 
 export interface MapViewProps {
@@ -109,7 +139,10 @@ export function MapView({
     const container = containerRef.current;
     if (container === null) return;
 
-    const map = L.map(container, { preferCanvas: true }).setView([50.7, 4.6], 8);
+    const map = L.map(container, {
+      preferCanvas: true,
+      renderer: L.canvas({ tolerance: 8 })
+    }).setView([50.7, 4.6], 8);
 
     L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', {
       attribution: '&copy; OpenStreetMap contributors',
@@ -150,7 +183,10 @@ export function MapView({
     }
     groupsRef.current = new Map();
 
-    for (const feature of drawable) {
+    for (const feature of [...drawable].sort(
+      (a, b) =>
+        drawPriority(a.properties.featureType) - drawPriority(b.properties.featureType)
+    )) {
       const type = feature.properties.featureType;
       let group = groupsRef.current.get(type);
       if (group === undefined) {
@@ -158,14 +194,15 @@ export function MapView({
         groupsRef.current.set(type, group);
       }
 
-      let layer: L.Layer;
+      let layers: FeatureLayers;
       try {
-        layer = createFeatureLayer(feature, onSelect);
+        layers = createFeatureLayers(feature, onSelect);
       } catch (error) {
         console.error(error);
         continue;
       }
-      layer.addTo(group);
+      layers.visual.addTo(group);
+      layers.hit.addTo(group);
     }
   }, [drawable, onSelect]);
 
