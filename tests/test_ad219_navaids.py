@@ -118,8 +118,25 @@ def test_every_key_is_unique_and_matches_the_validator_pattern():
             assert feature.parent_key == icao
             assert feature.natural_key not in seen, f"duplicate key {feature.natural_key}"
             seen.add(feature.natural_key)
+            if "component" in feature.fields:
+                assert feature.natural_key.endswith("/" + feature.fields["component"].value)
     # Marker beacons ("dash / dash") are not aids and must never become features.
     assert not any("dash" in key.lower() for key in seen)
+
+
+def test_ils_keys_use_an_explicit_component_segment():
+    features, _ = _parse("EBBR")
+    ils = [f for f in features if "component" in f.fields]
+
+    assert {f.natural_key for f in ils} == {
+        f"NAV/EBBR/{designator}/{component}"
+        for designator in ("IBX", "IBM", "IBL", "IBR")
+        for component in ("LOC", "GP", "DME")
+    }
+    for feature in ils:
+        # The component segment comes from config tokens, never from a Python literal.
+        assert feature.natural_key.rsplit("/", 1)[1] == feature.fields["component"].value
+        assert feature.fields["component"].value in {"LOC", "GP", "DME"}
 
 
 def test_enroute_key_still_matches_the_pattern():
@@ -127,7 +144,11 @@ def test_enroute_key_still_matches_the_pattern():
 
     assert pattern.match("NAV/AFI")
     assert pattern.match("NAV/EBBR/BUB")
+    assert pattern.match("NAV/EBBR/IBX/LOC")
+    assert pattern.match("NAV/EBBR/IBX/GP")
+    assert pattern.match("NAV/EBBR/IBX/DME")
     assert not pattern.match("NAV/")  # a key with no designator is still rejected
+    assert not pattern.match("NAV/EBBR/IBX/OM")  # only the declared components are valid
 
 
 def test_unparsable_position_warns_and_emits_no_feature():

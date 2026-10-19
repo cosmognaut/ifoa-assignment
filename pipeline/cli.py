@@ -26,6 +26,7 @@ from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
 from pipeline.parse.navaids import NavaidParser
+from pipeline.parse.operational import OperationalParser
 from pipeline.parse.routes import RouteParser
 from pipeline.parse.airspace import AirspaceParser
 from pipeline.validate.rules import ValidationEngine
@@ -435,6 +436,51 @@ def _parse_airport_navaids(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[L
         retrieved_at=retrieved_at
     )
 
+def _parse_airport_operational(cycle_id: str, icao: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
+    """AD 2.21 noise abatement and AD 2.20 local regulations for one airport.
+
+    Both are prose: the feature carries the verbatim text, not a structure read into it.
+    """
+    sections_cfg = load_sections_config()
+    specs = [
+        (next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.21"), None), "noise"),
+        (next((s for s in sections_cfg.get("sections", []) if s["id"] == "AD-2.20"), None), "local"),
+    ]
+
+    features: List[Feature] = []
+    issues: List[ValidationIssue] = []
+    meta = _load_publication_meta(cache_dir, cycle_id) or {}
+    effective_date = meta.get("effective_date", cycle_id[:10])
+    parser = OperationalParser(cycle_id=cycle_id, effective_date=effective_date)
+
+    for spec, kind in specs:
+        if not spec:
+            continue
+        template = require_str(spec, "file_template", f"sections.yaml {spec['id']}")
+        doc_path = cache_dir / cycle_id / template.format(icao=icao)
+        if not doc_path.exists():
+            continue
+
+        manifest_items = ManifestManager.load_manifest(str(cache_dir), cycle_id)
+        doc_meta = next((item for item in manifest_items if item.section_id == f"AD-2.{icao}"), None)
+        source_url = doc_meta.url if doc_meta else f"file://{doc_path}"
+        retrieved_at = doc_meta.fetched_at if doc_meta else datetime.now(timezone.utc).isoformat()
+        html = doc_path.read_text(encoding="utf-8")
+
+        if kind == "noise":
+            feat, feat_issues = parser.parse_noise(
+                icao, html, doc_path.name, source_url, retrieved_at
+            )
+        else:
+            feat, feat_issues = parser.parse_local_regulations(
+                icao, html, doc_path.name, source_url, retrieved_at
+            )
+        if feat is not None:
+            features.append(feat)
+        issues.extend(feat_issues)
+
+    return features, issues
+
 def _parse_airspaces(cycle_id: str, cache_dir: Path) -> Tuple[List[Feature], List[ValidationIssue]]:
     sections_cfg = load_sections_config()
     asp_spec = next((s for s in sections_cfg.get("sections", []) if s["id"] == "ENR-2.1"), None)
@@ -540,6 +586,10 @@ def _parse_all(cycle_id: str, args=None) -> Tuple[List[Feature], List[Validation
             nav19_feats, nav19_issues = _parse_airport_navaids(cycle_id, icao, cache_dir)
             all_features.extend(nav19_feats)
             all_issues.extend(nav19_issues)
+
+            ops_feats, ops_issues = _parse_airport_operational(cycle_id, icao, cache_dir)
+            all_features.extend(ops_feats)
+            all_issues.extend(ops_issues)
         except FileNotFoundError as e:
             if explicit_icao:
                 raise e

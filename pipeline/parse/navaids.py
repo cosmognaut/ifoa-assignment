@@ -274,10 +274,11 @@ class NavaidParser:
     # to the single-cell caption above it ("ILS 01 ( CAT I)"). Only the LOC row
     # publishes the ILS identifier; GP inherits it, DME repeats it.
     #
-    # Natural keys: NAV/{ICAO}/{designator}. Because LOC and DME of one ILS share
-    # a designator, the second and later component of a designator appends its own
-    # initial ("IBX" LOC, "IBXG" GP, "IBXD" DME) — still 2-5 alphanumerics, so it
-    # matches natural_key_formats.navaid and no component is dropped or merged.
+    # Natural keys: a flat aid is NAV/{ICAO}/{designator}; an ILS component adds an
+    # explicit segment naming the component from config, because LOC and DME of one
+    # system share the identifier and GP publishes none:
+    #     NAV/EBBR/IBX/LOC   NAV/EBBR/IBX/GP   NAV/EBBR/IBX/DME
+    # Nothing is merged or dropped, and no component is encoded in an opaque suffix.
     # ------------------------------------------------------------------
     def parse_airport_navaids(
         self,
@@ -404,9 +405,7 @@ class NavaidParser:
                 continue
 
             base_key = f"NAV/{icao}/{designator}"
-            nat_key = base_key
-            if nat_key in used_keys:
-                nat_key = f"{base_key}{label[0].upper()}"
+            nat_key = f"{base_key}/{label.upper()}" if is_component else base_key
             if nat_key in used_keys:
                 continue  # defensive: never overwrite an emitted feature
             used_keys[nat_key] = designator

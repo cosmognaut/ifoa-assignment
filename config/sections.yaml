@@ -34,6 +34,10 @@ converters_regex:
   frequency_mhz: "(\\d+(?:\\.\\d+)?)\\s*MHZ"
   frequency_ch: "CH\\s*(\\d+)[XY]?"
   ils_caption: "^ILS\\b.*?\\(\\s*(CAT\\s*[IVX]+)\\s*\\)"
+  aircraft_type_code: "^[A-Z][A-Z0-9]{1,3}$"
+  email: "\\S+@\\S+\\.\\S+"
+  ppr_token: "\\bPPR\\b"
+  ppr_phrase: "(?i)prior permission"
   limit_flight_level: "^FL\\s*(\\d+)$"
   limit_altitude: "^(\\d+(?:\\.\\d+)?)\\s*(FT|M)\\s*(AMSL|AGL|SFC)?$"
   limit_bare_number: "^(\\d+(?:\\.\\d+)?)$"
@@ -378,6 +382,40 @@ sections:
     anchor_template: "{icao}-AD-2.20"
     heading_pattern: "AD 2.20"
     target_type: "operationalInfo"
+    natural_key_template: "{icao}/OPS/LOCAL-REGS"
+    fields:
+      # Prose and mixed key/value tables. Captured verbatim; no structure is invented
+      # from the narrative, only these three facts are derived.
+      localRegulationsText:
+        source: "section-text"
+        converter: "text"
+      regulationContactEmails:
+        source: "section-text"
+        converter: "text"
+        emit_when: "at least one email-like string is present"
+      pprRequired:
+        source: "section-text"
+        converter: "boolean"
+        emit_when: "standalone PPR token AND a 'prior permission' phrase"
+
+  - id: "AD-2.21"
+    name: "Noise Abatement Procedures"
+    category: "AD"
+    scope: "per_airport"
+    document_id: "AD-2.{icao}"
+    file_template: "EB-AD-2.{icao}-en-GB.html"
+    anchor_template: "{icao}-AD-2.21"
+    heading_pattern: "AD 2.21"
+    target_type: "operationalInfo"
+    natural_key_template: "{icao}/OPS/NOISE"
+    fields:
+      noiseRelevantAircraftTypes:
+        source: "table"
+        converter: "text"
+        emit_when: "a table exists and every non-empty data cell is an ICAO type code"
+      noiseAbatementText:
+        source: "section-text"
+        converter: "text"
 
   # En-Route Sections
   - id: "ENR-2.1"
