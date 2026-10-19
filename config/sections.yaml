@@ -31,11 +31,28 @@ converters_regex:
   elevation: "THR\\s+(\\d+(?:\\.\\d+)?)\\s*FT"
   elevation_fallback: "(\\d+(?:\\.\\d+)?)"
   distance: "(\\d+(?:[\\s\\u2009\\xa0]\\d+)?)"
+  frequency_mhz: "(\\d+(?:\\.\\d+)?)\\s*MHZ"
+  frequency_ch: "CH\\s*(\\d+)[XY]?"
 
 surface_mapping:
   asphalt: "ASPH"
   concrete: "CONC"
   grass: "GRAS"
+  default: "OTHER"
+
+navaid_type_tokens:
+  "DVOR / DME": "DVOR/DME"
+  "DVOR/DME": "DVOR/DME"
+  "VOR / DME": "VOR/DME"
+  "VOR/DME": "VOR/DME"
+  "DVOR": "DVOR"
+  "TACAN": "TACAN"
+  "DME": "DME"
+  "VOR": "VOR"
+  "NDB": "NDB"
+  "ILS": "ILS"
+  "LOC": "LOC"
+  "GP": "GP"
   default: "OTHER"
 
 sections:
@@ -277,6 +294,34 @@ sections:
     anchor_template: "{icao}-AD-2.19"
     heading_pattern: "AD 2.19"
     target_type: "navaid"
+    table_locator:
+      required_headers:
+        - "type of aid"
+        - "id"
+        - "frequency"
+    fields:
+      stationName:
+        header_pattern: "type of aid"
+        converter: "text"
+      designator:
+        header_pattern: "id"
+        converter: "text"
+      frequencyRaw:
+        header_pattern: "frequency"
+        converter: "text"
+      hours:
+        header_pattern: "hours"
+        converter: "text"
+      coordinates:
+        header_pattern: "position"
+        converter: "coordinates"
+      dmeElevation:
+        header_pattern: "dme"
+        converter: "elevation"
+        unit: "FT"
+      remarks:
+        header_pattern: "remarks"
+        converter: "text"
 
   - id: "AD-2.20"
     name: "Local Aerodrome Regulations"
@@ -324,6 +369,35 @@ sections:
     anchor: "ENR-4.1"
     heading_pattern: "ENR 4.1"
     target_type: "navaid"
+    table_locator:
+      required_headers:
+        - "name of station"
+        - "id"
+        - "frequency"
+        - "coordinates"
+    fields:
+      stationName:
+        header_pattern: "name of station"
+        converter: "text"
+      designator:
+        header_pattern: "id"
+        converter: "text"
+      frequencyRaw:
+        header_pattern: "frequency"
+        converter: "text"
+      hours:
+        header_pattern: "hours"
+        converter: "text"
+      coordinates:
+        header_pattern: "coordinates"
+        converter: "coordinates"
+      dmeElevation:
+        header_pattern: "dme"
+        converter: "elevation"
+        unit: "FT"
+      remarks:
+        header_pattern: "remarks"
+        converter: "text"
 
   - id: "ENR-4.4"
     name: "Significant Points (Waypoints)"

@@ -5,6 +5,7 @@ from pipeline.config import load_crawler_config, require_str
 from pipeline.parse.runways import RunwayParser
 from pipeline.parse.waypoints import WaypointParser
 from pipeline.parse.airports import AirportParser
+from pipeline.parse.navaids import NavaidParser
 
 def _cache_dir() -> Path:
     return Path(require_str(load_crawler_config(), "cache_dir", "crawler.yaml"))
@@ -95,22 +96,45 @@ def test_golden_values_airports():
         assert eblg_ad.fields["elevation"].value == 651.0
         assert "CAT 10" in eblg_ad.fields["rffsCategory"].value
 
-def test_golden_values_waypoints():
-    """Asserts waypoint extraction from ENR 4.4."""
+def test_golden_values_navaids():
+    """Asserts authentic operational data for navaids (ENR 4.1): AFI, ANT, BUB, BBE."""
     cache_dir = _cache_dir()
-    doc_path = cache_dir / "2026-10-01-current" / "EB-ENR-4.4-en-GB.html"
+    doc_path = cache_dir / "2026-10-01-current" / "EB-ENR-4.1-en-GB.html"
     if not doc_path.exists():
-        pytest.skip("ENR-4.4 raw HTML not present")
+        pytest.skip("ENR-4.1 raw HTML not present")
 
-    parser = WaypointParser("2026-10-01-current", "2026-10-01")
-    feats, _ = parser.parse_waypoints(
+    parser = NavaidParser("2026-10-01-current", "2026-10-01")
+    feats, issues = parser.parse_enroute_navaids(
         doc_path.read_text(encoding="utf-8"), doc_path.name, "https://ops.skeyes.be", "2026-10-19T00:00:00Z"
     )
-    assert len(feats) > 250
+    assert len(feats) >= 20
+    assert len(issues) == 0
     feat_map = {f.natural_key: f for f in feats}
 
-    # ABBUW coordinates: 50°07'52"N 005°16'37"E -> Lon ~5.276944, Lat ~50.131111
-    abbuw = feat_map["WPT/ABBUW"]
-    lon, lat = abbuw.geometry.coordinates
-    assert round(lon, 4) == 5.2769
-    assert round(lat, 4) == 50.1311
+    # 1. AFI (Affligem DVOR/DME)
+    afi = feat_map["NAV/AFI"]
+    assert afi.fields["designator"].value == "AFI"
+    assert afi.fields["frequency"].value == 114.9
+    assert afi.fields["frequencyUnit"].value == "MHZ"
+    assert afi.fields["dmeElevation"].value == 300.0
+    assert afi.fields["navaidType"].value == "DVOR/DME"
+    lon, lat = afi.geometry.coordinates
+    assert round(lon, 4) == 4.1389
+    assert round(lat, 4) == 50.9078
+
+    # 2. ANT (Antwerpen DVOR/DME)
+    ant = feat_map["NAV/ANT"]
+    assert ant.fields["frequency"].value == 113.5
+    assert ant.fields["dmeElevation"].value == 100.0
+    assert ant.fields["navaidType"].value == "DVOR/DME"
+
+    # 3. BUB (Brussels DVOR/DME)
+    bub = feat_map["NAV/BUB"]
+    assert bub.fields["frequency"].value == 114.6
+    assert bub.fields["dmeElevation"].value == 200.0
+
+    # 4. BBE (Beauvechain TACAN)
+    bbe = feat_map["NAV/BBE"]
+    assert bbe.fields["frequency"].value == 107.0
+    assert bbe.fields["frequencyUnit"].value == "CH"
+    assert bbe.fields["navaidType"].value == "TACAN"
