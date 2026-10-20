@@ -32,9 +32,10 @@ def _declared_converters(sections_cfg: dict):
     """
     Yield (section_id, field_name, converter_name, driven) for every declared converter.
 
-    `driven` is False for specs annotated `converter_driven: false`, which name a
-    converter only to describe the emitted type; their parser derives the value
-    itself and never dispatches through CONVERTER_REGISTRY.
+    `driven` is False for specs annotated `converter_driven: false`. That flag is
+    documentation of intent: such a field's parser derives the value itself and no
+    dispatch site reads the flag. It is NOT an exemption from resolution -- a spec
+    that names a converter must name a real one whether or not it is dispatched.
     """
     for section in sections_cfg["sections"]:
         for field_name, field_spec in (section.get("fields") or {}).items():
@@ -43,10 +44,11 @@ def _declared_converters(sections_cfg: dict):
                 yield section["id"], field_name, field_spec["converter"], driven
 
 
-# Specs allowed to name a converter that is not in the registry because they are
-# explicitly annotated as not converter-driven. Pinned so the annotation cannot be
-# used as a quiet way to smuggle broken converter references past this test.
-INERT_CONVERTER_SPECS = {("AD-2.20", "pprRequired", "boolean")}
+# Deliberately empty: no shipped spec is permitted to name a converter outside the
+# registry, dispatched or not. AD-2.20/pprRequired used to sit here as a pinned
+# exemption for the dead "boolean" name; the spec now declares no converter key at
+# all, which is the honest shape. Add nothing here without a registry entry to match.
+INERT_CONVERTER_SPECS: set = set()
 
 
 def test_every_declared_converter_in_real_config_exists():
@@ -55,8 +57,8 @@ def test_every_declared_converter_in_real_config_exists():
 
     offenders = [
         f"{section_id}.{field_name} -> {converter!r}"
-        for section_id, field_name, converter, driven in _declared_converters(sections_cfg)
-        if driven and converter not in CONVERTER_REGISTRY
+        for section_id, field_name, converter, _ in _declared_converters(sections_cfg)
+        if converter not in CONVERTER_REGISTRY
     ]
 
     assert not offenders, (
@@ -64,15 +66,15 @@ def test_every_declared_converter_in_real_config_exists():
         + ", ".join(offenders)
     )
 
-    # Every unknown-converter spec must be one of the pinned, intentional exemptions --
-    # otherwise a real typo could be silenced by adding `converter_driven: false`.
-    exempt = {
+    # Non-dispatch specs get no special treatment above, but assert the pin is still
+    # honest: anything sitting in it must actually exist in the real config.
+    named = {
         (section_id, field_name, converter)
-        for section_id, field_name, converter, driven in _declared_converters(sections_cfg)
-        if not driven and converter not in CONVERTER_REGISTRY
+        for section_id, field_name, converter, _ in _declared_converters(sections_cfg)
     }
-    assert exempt <= INERT_CONVERTER_SPECS, (
-        "unexpected non-dispatch converter specs: " + repr(sorted(exempt - INERT_CONVERTER_SPECS))
+    assert INERT_CONVERTER_SPECS <= named, (
+        "INERT_CONVERTER_SPECS pins specs that are no longer declared: "
+        + repr(sorted(INERT_CONVERTER_SPECS - named))
     )
 
     # The validator must agree with the raw scan above.
@@ -109,6 +111,67 @@ def test_validator_accepts_minimal_valid_sections():
     }
 
     assert validate_section_converters(sections_cfg) is None
+
+
+def test_converter_driven_false_is_not_an_exemption_from_resolution():
+    """A non-dispatch spec naming a nonexistent converter must still raise."""
+    sections_cfg = {
+        "sections": [
+            {
+                "id": "AD-2.20",
+                "fields": {
+                    "pprRequired": {
+                        "source": "section-text",
+                        "converter": "total_nonsense",
+                        "converter_driven": False,
+                    },
+                },
+            }
+        ]
+    }
+
+    with pytest.raises(ConfigError) as exc:
+        validate_section_converters(sections_cfg)
+
+    message = str(exc.value)
+    assert "AD-2.20" in message
+    assert "pprRequired" in message
+    assert "total_nonsense" in message
+
+
+def test_non_dispatch_spec_without_converter_key_is_accepted():
+    """
+    `converter_driven: false` plus no `converter` key is the honest shape for a field
+    whose parser derives the value itself: nothing is declared, so nothing resolves.
+    """
+    sections_cfg = {
+        "sections": [
+            {
+                "id": "AD-2.20",
+                "fields": {
+                    "pprRequired": {
+                        "source": "section-text",
+                        "converter_driven": False,
+                        "emit_when": "standalone PPR token AND a 'prior permission' phrase",
+                    },
+                },
+            }
+        ]
+    }
+
+    assert validate_section_converters(sections_cfg) is None
+
+    # The shipped config must actually have that shape -- guards a regression that
+    # re-adds a `converter` key to the real AD-2.20/pprRequired spec.
+    shipped = yaml.safe_load(SECTIONS_YAML.read_text(encoding="utf-8"))
+    spec = next(s for s in shipped["sections"] if s["id"] == "AD-2.20")["fields"][
+        "pprRequired"
+    ]
+    assert "converter" not in spec, (
+        "AD-2.20/pprRequired declares a converter it can never dispatch: "
+        + repr(spec.get("converter"))
+    )
+    assert spec["converter_driven"] is False
 
 
 def test_misspelled_converter_raises_instead_of_falling_back_to_text():

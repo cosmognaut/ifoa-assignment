@@ -213,21 +213,25 @@ def validate_section_converters(sections_cfg: Dict[str, Any]) -> None:
     degrade to the text passthrough, which made the converter contract advisory.
 
     Raises ConfigError naming the section id, field name and offending value.
-    Fields marked `converter_driven: false` are not converter-driven (their parser
-    derives the value itself), so their `converter` key is inert documentation and
-    is deliberately not dispatched; it is still checked for honesty.
+
+    Registry membership is checked unconditionally. `converter_driven: false` is
+    documentation of intent only -- no dispatch site reads it, because a field whose
+    parser derives the value itself never reaches the registry. Such a field should
+    therefore carry no `converter` key at all. If one does, the name must be real:
+    a non-dispatch field advertising a nonexistent converter is the same kind of lie
+    the dead `boolean` key was, and an earlier version of this function let it pass.
     """
     offenders = []
     for section in require(sections_cfg, "sections", "sections.yaml"):
         section_id = require_str(section, "id", "sections.yaml sections[]")
         for field_name, field_spec in (section.get("fields") or {}).items():
             if not isinstance(field_spec, dict) or "converter" not in field_spec:
+                # No declared converter: nothing to resolve. This is the documented
+                # shape for a field another parser derives without a converter.
                 continue
             declared = require_str(
                 field_spec, "converter", f"sections.yaml section '{section_id}' field '{field_name}'"
             )
-            if field_spec.get("converter_driven", True) is False:
-                continue
             if declared not in CONVERTER_REGISTRY:
                 offenders.append((section_id, field_name, declared))
 
