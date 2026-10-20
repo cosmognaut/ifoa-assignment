@@ -13,6 +13,22 @@ from pipeline.models.validation_issue import ValidationIssue
 from pipeline.models.change import Change
 from pipeline.config import load_database_config, require_str
 
+def resolve_mongo_uri(uri: Optional[str] = None, db_cfg: Optional[Dict[str, Any]] = None) -> str:
+    """Resolve the Mongo URI from the same three sources in the same order as MongoLoader.
+
+    Precedence, unchanged from the loader: the MONGO_URI env var, then the explicit
+    `uri` argument, then `uri` from config/database.yaml. Any caller that prints or
+    reports the URI must call this, not reimplement the precedence, otherwise the
+    log line can name a database the client is not connected to.
+
+    `db_cfg` is optional only to let a caller that already holds the `database:`
+    block avoid a second read of the file; it is loaded on demand otherwise.
+    """
+    if db_cfg is None:
+        db_cfg = load_database_config()
+    return os.getenv("MONGO_URI") or uri or require_str(db_cfg, "uri", "database.yaml")
+
+
 class MongoLoader:
     """This class models the MongoDB loader interface"""
     def __init__(self, uri: Optional[str] = None):
@@ -21,7 +37,7 @@ class MongoLoader:
         Note that you can add an env var that overrides the preference for config YAML default.
         """
         db_cfg = load_database_config()
-        mongo_uri = os.getenv("MONGO_URI") or uri or require_str(db_cfg, "uri", "database.yaml")
+        mongo_uri = resolve_mongo_uri(uri, db_cfg)
 
         self.client = MongoClient(mongo_uri, serverSelectionTimeoutMS=5000)
         db_name = require_str(db_cfg, "name", "database.yaml")

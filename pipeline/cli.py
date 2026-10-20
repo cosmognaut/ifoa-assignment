@@ -32,7 +32,7 @@ from pipeline.parse.routes import RouteParser
 from pipeline.parse.airspace import AirspaceParser
 from pipeline.validate.rules import ValidationEngine
 from pipeline.diff.engine import DiffEngine, DiffReport
-from pipeline.load.load import MongoLoader
+from pipeline.load.load import MongoLoader, resolve_mongo_uri
 from pymongo.errors import PyMongoError
 
 
@@ -719,7 +719,7 @@ def cmd_diff(args):
     to_cycle = args.to_cycle
     cache_dir = _cache_dir(args)
     db_cfg = load_database_config()
-    loader = MongoLoader(uri=getattr(args, "mongo_uri", None) or db_cfg["uri"])
+    loader = MongoLoader(uri=resolve_mongo_uri(getattr(args, "mongo_uri", None), db_cfg))
 
     # Load from MongoDB if available, otherwise parse from cache
     from_raw = loader.get_features(from_cycle)
@@ -761,7 +761,7 @@ def cmd_load(args):
     promote = getattr(args, "promote", False)
     cache_dir = _cache_dir(args)
     db_cfg = load_database_config()
-    mongo_uri = getattr(args, "mongo_uri", None) or db_cfg["uri"]
+    mongo_uri = resolve_mongo_uri(getattr(args, "mongo_uri", None), db_cfg)
 
     print(f"[Pipeline] Processing cycle {cycle_id} for MongoDB ({mongo_uri})...")
     features, parse_issues = _parse_all(cycle_id, args)
@@ -955,7 +955,7 @@ def cmd_export(args):
     out_root = Path(args.out)
 
     try:
-        loader = MongoLoader(uri=getattr(args, "mongo_uri", None))
+        loader = MongoLoader(uri=resolve_mongo_uri(getattr(args, "mongo_uri", None)))
         publication_docs = loader.get_publications(cycle_id)
         feature_docs = loader.get_features(cycle_id)
         issue_docs = loader.get_issues(cycle_id)
