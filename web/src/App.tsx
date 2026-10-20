@@ -64,6 +64,10 @@ export function App() {
     setSelectedKey(naturalKey);
   }, []);
 
+  const handleClearSelection = useCallback(() => {
+    setSelectedKey(null);
+  }, []);
+
   const handleSelectAerodrome = useCallback((naturalKey: string) => {
     setSelectedKey(naturalKey);
     setView('airport');
@@ -149,7 +153,12 @@ export function App() {
           ) : null}
         </section>
 
-        <Inspector feature={selected} loading={status === 'loading'} issues={selectedIssues} />
+        <Inspector
+          feature={selected}
+          loading={status === 'loading'}
+          issues={selectedIssues}
+          onClose={handleClearSelection}
+        />
       </main>
     </div>
   );

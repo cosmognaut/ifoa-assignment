@@ -7,6 +7,7 @@ export interface InspectorProps {
   feature: GeoJsonFeature | null;
   loading: boolean;
   issues: ValidationIssue[];
+  onClose: () => void;
 }
 
 const LATERAL_KEY = 'lateralLimitsRaw';
@@ -32,7 +33,7 @@ function InspectorSkeleton() {
   );
 }
 
-export function Inspector({ feature, loading, issues }: InspectorProps) {
+export function Inspector({ feature, loading, issues, onClose }: InspectorProps) {
   const [selectedField, setSelectedField] = useState<string | null>(null);
   const naturalKey = feature === null ? null : feature.properties.naturalKey;
 
@@ -60,6 +61,15 @@ export function Inspector({ feature, loading, issues }: InspectorProps) {
 
   return (
     <aside className="inspector" aria-label="Inspector">
+      <button
+        type="button"
+        className="inspector-close"
+        aria-label="Close inspector"
+        onClick={onClose}
+      >
+        ×
+      </button>
+
       <header className="inspector-header">
         <span className="type-badge t1">{properties.featureType}</span>
         <h2 className="inspector-key t4 mono">{properties.naturalKey}</h2>

@@ -1,0 +1,522 @@
+/*
+ * Phone layout for the operations console.
+ *
+ * This file is additive only: every rule lives inside a max-width query and
+ * app.css is untouched, so the desktop rendering (>= 1024px) is byte-for-byte
+ * the same as before. Import order in main.tsx puts this after app.css so these
+ * declarations win inside the queries without needing !important.
+ *
+ * Below 768px the console stops being a two-pane desktop layout:
+ *   - the workspace stacks, the inspector becomes a bottom sheet;
+ *   - an unselected inspector collapses to a 56px placeholder bar;
+ *   - the top bar drops to 56px and truncates its cycle metadata;
+ *   - register rows and airport cards become single-column blocks;
+ *   - the declared-distance runway table scrolls inside its own card.
+ */
+
+@media (max-width: 767px) {
+  /* ---- shell: stack, no page-level horizontal scroll ---- */
+
+  .workspace {
+    flex-direction: column;
+  }
+
+  .content {
+    flex: 1 1 auto;
+    /* The sheet is sized by height, so the map keeps the rest of the column. */
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  /* ---- top bar: 72px -> 56px, truncating metadata ---- */
+
+  .topbar {
+    flex: 0 0 56px;
+    height: 56px;
+    gap: 8px;
+    padding: 0 10px;
+  }
+
+  .topbar-left {
+    /* Stacked instead of inline: brand above cycle id. One row of 390px cannot
+       hold the brand, the cycle id and three tabs, so the horizontal budget was
+       being taken from the cycle id until it read as "2026-". Two 20px/16px
+       lines fit inside the 56px bar and leave the id ~170px. */
+    flex: 1 1 auto;
+    flex-direction: column;
+    align-items: flex-start;
+    justify-content: center;
+    gap: 0;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  .topbar-brand {
+    flex: 0 0 auto;
+    font-size: 15px;
+    line-height: 20px;
+  }
+
+  /* Removed rather than shrunk: a 1px divider next to two stacked lines reads
+     as noise. */
+  .topbar-divider {
+    display: none;
+  }
+
+  /* The cycle id is long ("2026-10-01-current · AMDT 010/2026"). It must never
+     widen the bar, so it ellipsises on its own line with a real floor: at the
+     old inline width it was being allocated 2px, which is a stub, not a
+     truncation. */
+  .topbar-cycle {
+    flex: 0 0 auto;
+    align-self: stretch;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-size: 11px;
+    line-height: 16px;
+  }
+
+  /* Redundant on a phone: the effective date is in the overview subline and the
+     run panel, and keeping it costs the cycle id its remaining width. */
+  .topbar-eff {
+    display: none;
+  }
+
+  .topbar-tabs {
+    flex: 0 0 auto;
+    gap: 0;
+    margin-left: auto;
+  }
+
+  .topbar-tab {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 0 7px;
+    font-size: 12px;
+    line-height: 18px;
+    justify-content: center;
+  }
+
+  .tab-badge {
+    margin-left: 4px;
+  }
+
+  /* ---- content states ---- */
+
+  .content-state {
+    padding: 16px;
+  }
+
+  .content-state-box {
+    max-width: 100%;
+    padding: 20px;
+  }
+
+  .retry-button {
+    min-height: 44px;
+    padding: 0 18px;
+  }
+
+  /* ---- inspector -> bottom sheet ---- */
+
+  .inspector {
+    position: relative;
+    flex: 0 0 auto;
+    width: 100%;
+    height: 45vh;
+    /* Dynamic viewport units where supported: iOS/Android toolbars would
+       otherwise size the sheet past the visible area. */
+    height: 45dvh;
+    min-height: 0;
+    padding: 12px 16px 16px;
+    border-left: 0;
+    border-top: 1px solid var(--border-subtle);
+  }
+
+  /* One scroll container for the whole sheet. Keeping the header / field list /
+     provenance as separate flex children meant the provenance block's natural
+     height (it wraps a raw text well) starved .inspector-scroll down to
+     clientHeight 0, so the field rows were reachable by nothing. Everything
+     scrolls together instead, and the provenance stop is no longer sticky
+     inside a 380px sheet. */
+  .inspector-scroll {
+    flex: 0 0 auto;
+    min-height: auto;
+    overflow: visible;
+  }
+
+  .inspector:not(:has(.inspector-empty)) {
+    overflow-y: auto;
+    /* Momentum scrolling inside the sheet, not the page. */
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+
+  /* Empty inspector: a slim bar, not a permanent 45% of the screen. The void
+     wrapper and placeholder already exist in the DOM; :has() keys the collapsed
+     state off the placeholder itself, so no extra class is needed. */
+  .inspector:has(.inspector-empty) {
+    height: 56px;
+    max-height: 56px;
+    padding: 0 16px;
+    justify-content: center;
+  }
+
+  .inspector:has(.inspector-empty) .inspector-void {
+    flex: 0 0 auto;
+    align-items: center;
+    justify-content: flex-start;
+    padding: 0;
+  }
+
+  .inspector:has(.inspector-empty) .inspector-empty {
+    max-width: 100%;
+    padding: 0;
+    border: 0;
+    color: var(--text-muted);
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .inspector-header {
+    gap: 2px;
+    padding: 0 44px 12px 0;
+  }
+
+  .inspector-key {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .inspector-subline {
+    font-size: 12px;
+    line-height: 18px;
+  }
+
+  .inspector-close {
+    display: inline-flex;
+    position: sticky;
+    top: 0;
+    align-self: flex-end;
+    z-index: 3;
+    align-items: center;
+    justify-content: center;
+    min-width: 44px;
+    min-height: 44px;
+    margin: -6px -8px -38px 0;
+    color: var(--text-muted);
+    font-size: 18px;
+    line-height: 20px;
+  }
+
+  .inspector-close:hover {
+    color: var(--text-primary);
+  }
+
+  /* Field rows: 132px label column eats the sheet width; the label sits above
+     the value instead. */
+  .field-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: 10px 0;
+  }
+
+  .provenance {
+    position: static;
+    margin-top: 12px;
+    padding: 12px;
+  }
+
+  .provenance-row {
+    grid-template-columns: 88px minmax(0, 1fr);
+  }
+
+  .raw-well {
+    max-height: 120px;
+  }
+
+  /* ---- layer panel: keep it off the map's centre at phone width ---- */
+
+  .layer-panel {
+    top: 8px;
+    left: 8px;
+    width: 176px;
+    padding-bottom: 6px;
+  }
+
+  .layer-panel-head {
+    padding: 8px 12px;
+  }
+
+  .layer-row {
+    min-height: 44px;
+    height: auto;
+    padding: 6px 12px;
+  }
+
+  .layer-row-unmapped {
+    min-height: 52px;
+    padding: 10px 12px;
+  }
+
+  /* MapLibre's own zoom buttons ship at 29x29. */
+  .maplibregl-ctrl-group button {
+    width: 44px;
+    height: 44px;
+  }
+
+  /* ---- overview ---- */
+
+  .overview-inner {
+    padding: 24px 16px 0;
+  }
+
+  .overview-hero {
+    gap: 8px;
+  }
+
+  .hero {
+    font-size: 32px;
+    line-height: 38px;
+  }
+
+  .overview-counts {
+    gap: 16px 24px;
+    margin-top: 28px;
+  }
+
+  .overview-section {
+    margin-top: 28px;
+  }
+
+  .overview-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+  }
+
+  .overview-card {
+    padding: 16px;
+  }
+
+  .overview-method-row {
+    grid-template-columns: 32px minmax(0, 1fr);
+    gap: 2px 12px;
+  }
+
+  .overview-method-step {
+    grid-column: 1;
+    grid-row: 1;
+  }
+
+  .overview-method-title {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .overview-method-desc {
+    grid-column: 2;
+    grid-row: 2;
+  }
+
+  .run-panel {
+    padding: 16px;
+  }
+
+  /* Key/value rows are 32px tall with 16px gaps; let them breathe and wrap
+     instead of compressing the value column to nothing. */
+  .run-panel-row {
+    height: auto;
+    min-height: 32px;
+    padding: 4px 0;
+  }
+
+  .run-panel-value {
+    min-width: 0;
+  }
+
+  .overview-signature {
+    margin-top: 40px;
+    padding-bottom: 32px;
+  }
+
+  /* ---- register: rows become blocks ---- */
+
+  .register-header {
+    flex: 0 0 48px;
+    padding: 0 16px;
+  }
+
+  .register-filters {
+    flex: 0 0 auto;
+    min-height: 56px;
+    padding: 6px 16px;
+  }
+
+  .chip-filter {
+    min-height: 44px;
+    padding: 0 14px;
+  }
+
+  /* The four-column header is meaningless once rows stack, but a role="table"
+     without columnheaders is worse: keep it in the accessibility tree and take
+     it out of the visual flow instead. */
+  .register-head {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+    border: 0;
+  }
+
+  .register-row {
+    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-areas:
+      'id section'
+      'type type'
+      'summary summary';
+    align-items: baseline;
+    gap: 2px 12px;
+    height: auto;
+    min-height: 44px;
+    padding: 10px 16px;
+  }
+
+  .register-row span {
+    white-space: normal;
+    overflow: visible;
+    text-overflow: clip;
+  }
+
+  .register-id {
+    grid-area: id;
+  }
+
+  .register-section {
+    grid-area: section;
+    justify-self: end;
+  }
+
+  .register-type {
+    grid-area: type;
+  }
+
+  /* The type-aware summary is free text (limits, activity windows). It must
+     wrap rather than impose a min-width on the row. */
+  .register-summary {
+    grid-area: summary;
+    overflow-wrap: break-word;
+  }
+
+  /* ---- airport: rail on top, cards single column ---- */
+
+  .airport {
+    flex-direction: column;
+  }
+
+  .airport-rail {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    border-right: 0;
+    border-bottom: 1px solid var(--border-subtle);
+    overflow-x: auto;
+    overflow-y: hidden;
+  }
+
+  .airport-rail-head {
+    display: none;
+  }
+
+  .airport-back {
+    flex: 0 0 auto;
+    display: inline-flex;
+    align-items: center;
+    min-height: 44px;
+    padding: 0 12px;
+    white-space: nowrap;
+    border-right: 1px solid var(--border-subtle);
+  }
+
+  .airport-rail-row {
+    flex: 0 0 auto;
+    width: auto;
+    min-height: 44px;
+    padding: 0 16px;
+    border-left: 0;
+    border-bottom: 2px solid transparent;
+    white-space: nowrap;
+  }
+
+  .airport-rail-row.is-selected {
+    border-left-color: transparent;
+    border-bottom-color: var(--accent);
+  }
+
+  .airport-panel {
+    flex: 1 1 auto;
+    padding: 16px;
+  }
+
+  .airport-head {
+    padding-bottom: 16px;
+  }
+
+  .airport-icao {
+    font-size: 22px;
+    line-height: 28px;
+  }
+
+  .airport-name {
+    font-size: 15px;
+    line-height: 22px;
+  }
+
+  .airport-meta {
+    gap: 4px 16px;
+  }
+
+  .airport-grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 12px;
+    margin-top: 16px;
+  }
+
+  .airport-card {
+    padding: 16px;
+  }
+
+  /* The declared-distance table is eight columns of numeric data. Stacking it
+     into label/value pairs turns one glance into eight, so it keeps its shape
+     and scrolls horizontally inside the card instead — the page itself never
+     scrolls. `max-content` stops the cells squeezing to unreadable widths. */
+  .airport-card:has(.runway-table) {
+    overflow-x: auto;
+  }
+
+  .runway-table {
+    width: max-content;
+    min-width: 100%;
+  }
+
+  .runway-row {
+    min-height: 44px;
+  }
+
+  .runway-cell {
+    padding: 10px 6px;
+  }
+
+  .summary-row {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 2px;
+    padding: 10px 0;
+  }
+}
