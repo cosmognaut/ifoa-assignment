@@ -111,7 +111,7 @@ One row: the next edition adds a military UAS training zone to ENR 5.1 and chang
 | The map shows the airspace. | The map shows point and line features — aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 241 features with no geometry. |
 | The map shows all 663 features. | 422 are drawable; 241 have no geometry by design. |
 | `GET /api/changes` is the change log. | It requires explicit `from` and `to`. The `2026-10-01-current` → `2026-10-29` pair is genuine (one `NEW` row); the 321-row `2026-10-01` → `2026-10-01-current` pair is a cycle-id artefact, not a change record. |
-| The test count is a round number. | 131: 82 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 23 web (Vitest + jsdom, hermetic). |
+| The test count is a round number. | 152: 101 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 25 web (Vitest + jsdom, hermetic). |
 | The pipeline runs on a schedule. | It does not. `check-updates` is a command a human runs; there is no cron entry and no CI configuration — `.github/` does not exist in the repository. |
 | Something is deployed and serving users. | Nothing is deployed. MongoDB, the Node API and Vite run locally on 27017 / 3000 / 5173. The dataset is also committed as `data/export/2026-10-01-current/` so it can be inspected with nothing running at all. |
 | The crawler can refresh the data on demand. | A live crawl is refused: `https://ops.skeyes.be/robots.txt` returns `User-Agent: *` / `Disallow: /`, and the crawler honours it — 12 documents enumerated, 0 bytes fetched. The committed snapshot predates that policy; a refresh goes through the publisher's official offline package (`ingest fetch --from-dir` / `--from-zip`). |
@@ -120,7 +120,7 @@ One row: the next edition adds a military UAS training zone to ENR 5.1 and chang
 
 ## 7. How the work was built
 
-An AI assistant wrote much of the code; the verification around it is the substance of this repository. That means: a SHA-256 manifest chain over every byte fetched, golden-value tests whose expected numbers were transcribed by hand from the published AIP HTML, validation rules declared in YAML rather than scattered through Python, and 131 automated tests across three suites that I run before believing anything — including this document.
+An AI assistant wrote much of the code; the verification around it is the substance of this repository. That means: a SHA-256 manifest chain over every byte fetched, golden-value tests whose expected numbers were transcribed by hand from the published AIP HTML, validation rules declared in YAML rather than scattered through Python, and 152 automated tests across three suites that I run before believing anything — including this document.
 
 Verification earned its place three times. The first was the content hash: `2987` and `2987.0` produced different digests for the same runway, which would have made every re-parse look like an amendment; `normalize_value` now coerces exact floats and the one-line check in section 3 pins it. The second was `MongoLoader.save_features`, which only ever upserted — after the ILS key scheme changed, 24 old-shaped rows survived beside the 24 new ones and the API reported 71 navaids instead of 47. It now reconciles: it deletes rows for the publications it was given whose `naturalKey` is absent from the incoming set, returns the count, and the load command prints it (`• 663 features (35 stale rows removed)` on the run that cleaned up). The third was the special-use airspace family: 29 natural keys were malformed — a legend table of single-letter keys had been accepted as an airspace, and real designations carried underscores, an en dash and an interior slash through into the key — while `natural_key_formats` was a prefix check (`^SUA/`) that could not have caught any of them. Keys are now normalised from config with the verbatim designation kept in the field, non-data tables are rejected and counted (`[Parse] ENR 5.2: skipped 2 non-data rows`), and the patterns are `^SUA/[A-Z0-9][A-Z0-9 -]*$` / `^ASP/[A-Z0-9][A-Z0-9 -]*$` — which immediately failed six `ASP` keys that had been shipping accented and mixed case.
 
@@ -136,10 +136,10 @@ Verification earned its place three times. The first was the content hash: `2987
 | Documents ingested per cycle | **12** (`manifest.jsonl` lines) |
 | Cycle / amendment / effective / status | `2026-10-01-current` · `AMDT 010/2026` · 2026-10-01 · `promoted` |
 | Validation | 0 errors · 5 warnings (1 `RULE_OPERATIONAL_BBOX`, 2 `RULE_UNRESOLVED_WAYPOINT`, 2 `RULE_NOISE_AIRCRAFT_TYPES`) |
-| Tests | **131** = 82 pipeline + 26 API + 23 web (4 files) |
+| Tests | **152** = 101 pipeline + 26 API + 25 web (4 files) |
 | Web entry chunk | 252.81 kB · **78.05 kB gzip**; map chunk 1,061.49 kB · 290.09 kB gzip |
 | API endpoints | **8** read-only (7 `app.get('/api/…')` routes + 1 regex route for slash-bearing natural keys) |
-| ADRs / documented limits | 30 (`DECISION_LOG.md`) · 8 (`ARCHITECTURE.md` → Known limits) |
+| ADRs / documented limits | 31 (`DECISION_LOG.md`) · 8 (`ARCHITECTURE.md` → Known limits) |
 | Promotion gate | 0 errors · 100 warnings · 0.0 % disappeared runways · 5.0 % disappeared features |
 | Preview `2026-10-29` | 12 documents (5,354,094 bytes) from the offline package · 664 features · diff vs current: NEW 1, MODIFIED 0, DELETED 0, UNCHANGED 663 |
 | Live crawl | refused by `robots.txt` (`User-Agent: * / Disallow: /`); 12 documents enumerated, 0 fetched |

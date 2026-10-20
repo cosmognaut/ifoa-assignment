@@ -47,7 +47,22 @@ The decision (ADR 16) is to extract the attributes, keep the prose verbatim in `
 
 **API** (`api/`): eight read-only JSON endpoints — health, publications, feature-types, features (filters `publicationId`, `featureType`, `bbox`, `withGeometry`), feature detail, airports, changes, issues. Strictly a reader: no writes, `_id` projected away everywhere, connection and collection names from `config/database.yaml`.
 
-**Console** (`web/`): one shell — 72 px top bar, docked 400 px inspector — with Overview, Map, Register and an Airport summary view. Selecting a feature anywhere populates the inspector with its fields, provenance and attached validation issues.
+**Console** (`web/`): one shell — 72 px top bar, docked 400 px inspector — with Overview, Map, Register and an Airport summary view. Selecting a feature anywhere populates the inspector with its fields, provenance and attached validation issues. Below 768 px the workspace stacks and the inspector becomes a bottom sheet that collapses to a 56 px bar when nothing is selected; those rules live in `styles/responsive.css`, and `styles/app.css` is otherwise untouched.
+
+## Run it
+
+One command from a clean clone to a populated database and a live console. Requires Docker with the compose plugin and nothing else — no Python, Node or MongoDB on the host.
+
+```bash
+./start.sh                       # cycle 2026-10-01-current
+CYCLE=2026-10-29 ./start.sh      # or the preview cycle
+```
+
+It builds two images, waits for Mongo's healthcheck, runs `pipeline run` once against the committed raw cache (which re-verifies every file against `manifest.jsonl`, parses, validates, diffs and promotes), and then starts the API. It refuses to start the API unless the pipeline exits zero **and** prints `status: promoted`, so a quarantined cycle cannot masquerade as a ready console. Finally it polls `/api/health` until `features > 0` and prints the URL.
+
+Expected peak footprint is roughly 220 MB (Mongo ~150 MB with a 0.25 GB cache cap, API ~70 MB), which is what makes the stack viable on an 836 MB host. `docker compose down -v` drops the data volume; a second `./start.sh` against an existing volume is idempotent.
+
+`VITE_CARTO_API_KEY` is optional: without it the map loads the unkeyed raster basemap, and `./start.sh` is unaffected. Because Vite inlines the value at build time, supplying it needs a rebuild — copy `.env.example` to `.env`, set the key, then `docker compose up -d --build`.
 
 ## Known limits
 
