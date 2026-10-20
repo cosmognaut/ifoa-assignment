@@ -4,7 +4,7 @@
 <h1 align="center">eAIP Belgium</h1>
 <p align="center">Aeronautical data from the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP)</p>
 
-<a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-darkgreen?link=https%3A%2F%2Fmagpie.ishu.foo%2F" alt="visit button" /></a>
+<a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-aip.ishu.foo-c8ff00?labelColor=0d1117" alt="live console" /></a>
 
 <p align="center">
     <img src="./assets/eAIP_BELGIUM_map.png" alt="UI screenshot" />
@@ -101,7 +101,7 @@ This command checks the AIP updates from the publisher's website (skeyes). It wo
 
 2. Fetch a cycle, which downloads the raw HTML byte-for-byte with polite 1req/s rate limits:
 ```bash
-uv run -m pipeline.cli fetch --cycle 2026-10-01-current
+uv run -m pipeline.cli ingest fetch --cycle 2026-10-01-current
 ```
 > **Note**: ingest cycles reports `2026-10-01` for the current edition while this snapshot is keyed `2026-10-01-current`. These are the SAME edition, the suffix exists because current and previous share an effective date (see known limitations).
 
@@ -123,21 +123,21 @@ uv run -m pipeline.cli validate --cycle 2026-10-01-current
 ```
 6. You can diff consecutive cycles by `naturalKey` + semantic `contentHash`:
 ```bash
-uv run -m pipeline.cli diff --from 2026-10-01-current --to 2026-10-01-current
+uv run -m pipeline.cli diff --from 2026-10-01-current --to 2026-10-29
 ```
 7. Load the features, issues and publication into MongoDB, while evaluating promotion gate:
 ```bash
-uv run python -m pipeline.cli load --cycle 2026-10-01-current --promote
+uv run -m pipeline.cli load --cycle 2026-10-01-current --promote
 ```
 
 That's it. You should be ready for part B now. To do all of the above in a single command (i.e. verification, parsing, diffs and promotion), use:
 ```bash
-uv run python -m pipeline.cli run --cycle 2026-10-01-current
+uv run -m pipeline.cli run --cycle 2026-10-01-current
 ```
 
 To export the loaded cycle as reviewable JSON (`features.geojson`, `publications.json`, `validation_issues.json`):
 ```bash
-uv run python -m pipeline.cli export --cycle 2026-10-01-current --out data/export
+uv run -m pipeline.cli export --cycle 2026-10-01-current --out data/export
 ```
 You should have the output files in `./data/export/`.
 
@@ -165,7 +165,7 @@ npm start               # http://localhost:3000  (PORT / MONGO_URI env override)
 
 Of 663 features, 422 carry geometry and 241 (`airspace`, `specialUseArea`, `operationalInfo`) have `geometry: null` by design. `/api/features` therefore returns **all** matching features by default and leaves `geometry` null; map clients pass `withGeometry=true` to receive only the 422 drawable ones. Provenance keys inside `fields` are passed through unmodified (snake_case preserved, `999/UNL` sentinel untouched).
 
-`data/export/<cycle>/` holds a versioned, reviewable snapshot of the extracted dataset — the same camelCase envelope the API serves, `_id` projected away and sorted for byte-identical re-runs, so the data can be inspected without MongoDB, the pipeline or the API running.
+`data/export/<cycle>/` holds a versioned, reviewable snapshot of the extracted dataset in the same camelCase envelope the API serves, `_id` projected away and sorted for byte-identical re-runs, so the data can be inspected without MongoDB, the pipeline or the API running.
 
 2. `web/` is the reader for this dataset: React 19, TypeScript and Vite, talking only to the read-only API above. Nothing in the browser writes to the database. You would need Node 20.19+ (Vite 7's floor) and the API service above running on `localhost:3000`, which itself needs MongoDB with a cycle loaded. If the API is unreachable the console still mounts, but every view resolves to its loading, empty or error state instead of data. To start the web console, use:
 ```bash
@@ -177,8 +177,7 @@ npm run preview
 ```
 `npm test` runs the unit suite (Vitest, jsdom and Testing Library) and needs no running services (no API, no MongoDB, no network).
 
-## Configuration Architecture (`config/*.yaml`)
-
+## Configuration
 All domain rules, regex patterns, table locators, and endpoints live in `config/`. The Python codebase contains zero hardcoded publisher URLs, section filenames, or column indices.
 
 | Configuration File | Control Plane Responsibility |
@@ -189,30 +188,12 @@ All domain rules, regex patterns, table locators, and endpoints live in `config/
 | `config/validation.yaml` | ICAO regex, runway designator regex, absolute coordinate bounds, operational FIR bounding box, declared distance boolean rules (`require_*`), and promotion gate thresholds. |
 | `config/database.yaml` | MongoDB connection URI, database name, and collection name mapping. |
 
-## Provenance Traceability
-Every extracted value is wrapped in a `FeatureField` receipt block that preserves complete auditability back to the legal source:
+## Built with
+The core data extraction pipeline was built with Python (using BeautifulSoup) with type validation ensured by Pydantic. The API was a simple node application, while the web console used React and TypeScript, with Vite as the build tool/bundler. Testing libraries include `pytest` and `Vitest`.
 
-```json
-{
-  "value": "No TKOF before PSN H",
-  "unit": null,
-  "source": "Belgium & Luxembourg eAIP",
-  "section": "EBBR AD 2.13",
-  "effective_date": "2026-10-01",
-  "retrieved_at": "2026-10-19T15:37:36.523447+00:00",
-  "source_url": "https://ops.skeyes.be/html/belgocontrol_static/eaip/eAIP_Main/html/eAIP/EB-AD-2.EBBR-en-GB.html",
-  "parser_version": "1.0",
-  "raw_text": "No TKOF before PSN H"
-}
-```
-- **`value`**: Typed scalar parsed from the cell.
-- **`source`**: Official state publishing authority.
-- **`section`**: Standardized ICAO chapter and section label.
-- **`effective_date`**: Legal AIRAC effective date.
-- **`retrieved_at`**: Exact UTC timestamp when network packet arrived.
-- **`raw_text`**: Unaltered, verbatim snippet from the HTML cell for discrepancy verification.
+For large language models, I used Deepseek v4.1 Flash configured via my personal harness (@nooroid).
 
-## Known Limitations
+## Known limitations
 1. **Section Coverage Scope**: Parses AD 2.1, AD 2.2, AD 2.3, AD 2.6, AD 2.12, AD 2.13, AD 2.14 (approach and runway lighting), AD 2.19 (ILS / DVOR-DME / VOR / NDB) and AD 2.20 / AD 2.21 (local regulations, noise abatement) for the configured aerodromes (EBBR, EBCI, EBLG), plus ENR 2.1 (Airspace), ENR 3.2 (Upper ATS Routes), ENR 4.1 (Radio Navigation Aids), ENR 4.4 (Significant Points / Waypoints) and ENR 5.1 / 5.2 (Special-Use Airspace). ENR 3.1 publishes zero route tables in Belgian airspace (explicitly published by skeyes as `NIL`); GEN 0.2 and GEN 2.5 are downloaded during discovery to verify amendment schedules but are not parsed into feature entities. Still not captured: runway slope, which sits in AD 2.12's second table (`Slope of RWY and SWY`), displaced thresholds, and any SID / STAR / approach procedure structure.
 2. **Airspace Geometry**: Airspace boundaries and special-use areas are extracted as attributes and verbatim legal prose (`lateralLimitsRaw`), but geometry is strictly `null`. Complex geodesic arcs, circle radii, and national borders are not synthesized into polygon approximations.
 3. **NOTAM and AIP Supplements (SUP)**: `source_class` values for `SUP` and `NOTAM` are modelled in schema enums but stubbed; live feeds are not ingested.
