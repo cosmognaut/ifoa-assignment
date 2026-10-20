@@ -11,7 +11,7 @@ from pipeline.models.feature import (
 )
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.utils.hash_utils import compute_content_hash
-from pipeline.parse.converters import CONVERTER_REGISTRY
+from pipeline.parse.converters import resolve_converter
 from pipeline.config import (
     load_crawler_config, load_sections_config, load_validation_config, require, require_str)
 
@@ -182,8 +182,9 @@ class RunwayParser:
                     col_idx = col_map_13.get(fld_name)
                     if col_idx is not None and col_idx < len(cells):
                         raw_val = cells[col_idx]
-                        converter_name = fld_spec.get("converter", "text")
-                        converter_fn = CONVERTER_REGISTRY.get(converter_name, lambda x: (x, None))
+                        converter_name, converter_fn = resolve_converter(
+                            fld_spec, f"sections.yaml section 'AD-2.13' field '{fld_name}'"
+                        )
                         parsed_val, default_unit = converter_fn(raw_val)
                         unit = fld_spec.get("unit", default_unit)
 
@@ -244,8 +245,9 @@ class RunwayParser:
                 if col_idx is None or col_idx >= len(cells):
                     continue
                 raw_cell = cells[col_idx]
-                converter_name = fld_spec.get("converter", "text")
-                converter_fn = CONVERTER_REGISTRY.get(converter_name, lambda x: (x, None))
+                converter_name, converter_fn = resolve_converter(
+                    fld_spec, f"sections.yaml section 'AD-2.12' field '{fld_name}'"
+                )
                 parsed_val, auto_unit = converter_fn(raw_cell)
                 configured_unit = fld_spec.get("unit", auto_unit)
 

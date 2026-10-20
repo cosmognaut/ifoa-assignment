@@ -14,7 +14,7 @@ from pipeline.models.feature import (
 )
 from pipeline.models.validation_issue import ValidationIssue, IssueSeverity
 from pipeline.utils.hash_utils import compute_content_hash
-from pipeline.parse.converters import CONVERTER_REGISTRY
+from pipeline.parse.converters import resolve_converter
 from pipeline.config import load_crawler_config, load_sections_config, require, require_str
 
 PARSER_VERSION = "1.0"
@@ -109,8 +109,9 @@ class AirportParser:
                 else:
                     for f_name, f_spec in matched:
                         if f_name not in fields:
-                            converter_name = f_spec.get("converter", "text")
-                            converter_fn = CONVERTER_REGISTRY.get(converter_name, lambda x: (x, None))
+                            converter_name, converter_fn = resolve_converter(
+                                f_spec, f"sections.yaml section 'AD-2.2' field '{f_name}'"
+                            )
                             parsed_val, default_unit = converter_fn(raw_val)
                             unit = f_spec.get("unit", default_unit)
 
@@ -178,8 +179,9 @@ class AirportParser:
                 continue
 
             value = match.group(1).strip()
-            converter_name = field_spec.get("converter", "text")
-            converter_fn = CONVERTER_REGISTRY.get(converter_name, lambda x: (x, None))
+            converter_name, converter_fn = resolve_converter(
+                field_spec, f"sections.yaml section 'AD-2.1' field '{field_name}'"
+            )
             parsed_value, _ = converter_fn(value)
             fields[field_name] = FeatureField(
                 value=parsed_value,

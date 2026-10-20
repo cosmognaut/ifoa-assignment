@@ -6,7 +6,7 @@ This also houses CONVERTER_REGISTRY: Dict[str, Callable] which maps string names
 """
 import re
 from typing import Optional, Tuple, Any, Dict, Callable
-from pipeline.config import load_sections_config, require, require_str
+from pipeline.config import ConfigError, load_sections_config, require, require_str
 
 _sections_cfg = load_sections_config()
 _regex_cfg = require(_sections_cfg, "converters_regex", "sections.yaml")
@@ -187,6 +187,65 @@ CONVERTER_REGISTRY: Dict[str, Callable[[str], Tuple[Any, Optional[str]]]] = {
     "vertical_limit": convert_vertical_limit,
     "text": convert_text,
 }
+
+def resolve_converter(field_spec: Dict[str, Any], context: str) -> Tuple[str, Callable[[str], Tuple[Any, Optional[str]]]]:
+    """
+    Return (converter_name, converter_fn) for a field spec, refusing to guess.
+
+    The name must be declared, must be a non-empty string, and must exist in
+    CONVERTER_REGISTRY. There is no text fallback: a typo has to stop the parse
+    rather than quietly emit prose, because the repo rule in pipeline/config.py
+    is that a missing config value raises instead of acquiring a second meaning.
+    """
+    name = require_str(field_spec, "converter", context)
+    if name not in CONVERTER_REGISTRY:
+        known = ", ".join(sorted(CONVERTER_REGISTRY))
+        raise ConfigError(
+            f"{context}: field declares unknown converter '{name}'. Known converters: {known}"
+        )
+    return name, CONVERTER_REGISTRY[name]
+
+
+def validate_section_converters(sections_cfg: Dict[str, Any]) -> None:
+    """
+    Assert that every converter declared in config/sections.yaml resolves against
+    CONVERTER_REGISTRY. A misspelled name is a config bug: it used to silently
+    degrade to the text passthrough, which made the converter contract advisory.
+
+    Raises ConfigError naming the section id, field name and offending value.
+    Fields marked `converter_driven: false` are not converter-driven (their parser
+    derives the value itself), so their `converter` key is inert documentation and
+    is deliberately not dispatched; it is still checked for honesty.
+    """
+    offenders = []
+    for section in require(sections_cfg, "sections", "sections.yaml"):
+        section_id = require_str(section, "id", "sections.yaml sections[]")
+        for field_name, field_spec in (section.get("fields") or {}).items():
+            if not isinstance(field_spec, dict) or "converter" not in field_spec:
+                continue
+            declared = require_str(
+                field_spec, "converter", f"sections.yaml section '{section_id}' field '{field_name}'"
+            )
+            if field_spec.get("converter_driven", True) is False:
+                continue
+            if declared not in CONVERTER_REGISTRY:
+                offenders.append((section_id, field_name, declared))
+
+    if offenders:
+        details = "; ".join(
+            f"section '{sid}' field '{fname}' declares converter '{declared}', "
+            f"which is not in CONVERTER_REGISTRY"
+            for sid, fname, declared in offenders
+        )
+        known = ", ".join(sorted(CONVERTER_REGISTRY))
+        raise ConfigError(f"Unknown converter(s) in sections.yaml: {details}. Known converters: {known}")
+
+
+# Fail fast: validate the declared converter names as soon as sections.yaml is first
+# consumed (module import), before any parser walks a document. A typo must surface
+# here, not on the third runway or, worse, never.
+validate_section_converters(_sections_cfg)
+
 
 # compatibility aliases, just for testing
 dms_to_dd = lambda s: convert_coordinates(s)[0]

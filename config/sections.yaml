@@ -472,7 +472,12 @@ sections:
         emit_when: "at least one email-like string is present"
       pprRequired:
         source: "section-text"
+        # Not converter-driven: OperationalParser derives this from converters_regex
+        # ppr_token + ppr_phrase, never through CONVERTER_REGISTRY. The converter name
+        # below is retained as a description of the resulting type only, so no
+        # "boolean" converter is registered and none is dispatched.
         converter: "boolean"
+        converter_driven: false
         emit_when: "standalone PPR token AND a 'prior permission' phrase"
 
   - id: "AD-2.21"
