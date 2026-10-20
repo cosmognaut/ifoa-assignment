@@ -736,6 +736,13 @@ a {
   border-left: 1px solid var(--border-subtle);
 }
 
+/* The close control exists for the phone bottom sheet only: responsive.css enables
+   it below 768px. Hidden here so it cannot render as an unstyled button on desktop,
+   where the inspector is a permanent dock and nothing needs closing. */
+.inspector-close {
+  display: none;
+}
+
 .inspector-void {
   flex: 1;
   display: flex;
