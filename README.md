@@ -2,17 +2,15 @@
     <img src="./assets/eaip-wordmark.svg" alt="eAIP wordmark" />
 </p>
 <div align="center">
-    <h1 align="center">eAIP Belgium <a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-darkgreen?link=https%3A%2F%2Fmagpie.ishu.foo%2F" alt="visit button" /></a> </h1>
+    <h1 align="center">eAIP Belgium <a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-aip.ishu.foo-c8ff00?labelColor=0d1117" alt="live console" /></a> </h1>
 </div>
 <p align="center">Aeronautical data from the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP)</p>
-
-<a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-aip.ishu.foo-c8ff00?labelColor=0d1117" alt="live console" /></a>
 
 <p align="center">
     <img src="./assets/eAIP_BELGIUM_map.png" alt="UI screenshot" />
 </p>
 
-> **Note**: Declaration for generative AI use - @nooroid is the alias I have given to my personal agent, all of the commits were authored, tested, and reviewed by myself.
+> **Note**: Declaration for generative AI use - [@nooroid](https://github.com/nooroid) is the alias I have given to my personal agent. It authored the commits; I reviewed, tested, and corrected every change.
 
 ## Table of contents
 1. [Overview](#overview)
@@ -193,7 +191,7 @@ All domain rules, regex patterns, table locators, and endpoints live in `config/
 ## Built with
 The core data extraction pipeline was built with Python (using BeautifulSoup) with type validation ensured by Pydantic. The API was a simple node application, while the web console used React and TypeScript, with Vite as the build tool/bundler. Testing libraries include `pytest` and `Vitest`.
 
-For large language models, I used Deepseek v4.1 Flash configured via my personal harness (@nooroid).
+For large language models, I used Deepseek v4.1 Flash configured via my personal harness ([@nooroid](https://github.com/nooroid)).
 
 ## Known limitations
 1. **Section Coverage Scope**: Parses AD 2.1, AD 2.2, AD 2.3, AD 2.6, AD 2.12, AD 2.13, AD 2.14 (approach and runway lighting), AD 2.19 (ILS / DVOR-DME / VOR / NDB) and AD 2.20 / AD 2.21 (local regulations, noise abatement) for the configured aerodromes (EBBR, EBCI, EBLG), plus ENR 2.1 (Airspace), ENR 3.2 (Upper ATS Routes), ENR 4.1 (Radio Navigation Aids), ENR 4.4 (Significant Points / Waypoints) and ENR 5.1 / 5.2 (Special-Use Airspace). ENR 3.1 publishes zero route tables in Belgian airspace (explicitly published by skeyes as `NIL`); GEN 0.2 and GEN 2.5 are downloaded during discovery to verify amendment schedules but are not parsed into feature entities. Still not captured: runway slope, which sits in AD 2.12's second table (`Slope of RWY and SWY`), displaced thresholds, and any SID / STAR / approach procedure structure.
