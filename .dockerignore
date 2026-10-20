@@ -1,0 +1,23 @@
+# Build context is the repo root because both images need files from outside
+# their own directory (the web app, config/, data/export, pyproject.toml/uv.lock).
+# Everything below is either installed inside the image or mounted at run time.
+.git
+.gitignore
+.gitattributes
+.venv
+.pytest_cache
+**/__pycache__
+**/*.pyc
+**/node_modules
+web/dist
+web/.env.local
+# The root .env holds the CARTO key that compose substitutes into the build arg.
+# Left in the context it would travel into the image even with no COPY naming it.
+# The negation must follow the patterns it overrides: .env.* would swallow it.
+.env
+.env.*
+!.env.example
+data/raw
+assets
+*.md
+!README.md

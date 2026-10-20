@@ -1,0 +1,76 @@
+# One-command demo: `./start.sh` starts mongo, runs the pipeline once against the
+# committed raw cache, then serves the console. No host tools beyond Docker.
+#
+# The build context for both images is the repo root, because the API image needs
+# config/ and data/export/ as siblings of api/ (both paths are resolved from the
+# module, never from the cwd) and the web build needs web/.
+# The map renders without a CARTO key — styleUrl() falls back to the unkeyed
+# raster basemap. For vector tiles, copy .env.example to .env, set
+# VITE_CARTO_API_KEY, then rebuild:  docker compose up -d --build
+# A rebuild is required because Vite inlines the key at build time; adding it
+# to .env and restarting the container changes nothing.
+name: ifoa-assignment
+
+services:
+  mongo:
+    image: mongo:7
+    # 0.25 GB is the smallest WiredTiger will accept. The whole dataset is 663
+    # features in four collections, so anything larger only reserves RAM the demo
+    # never touches.
+    command: ["mongod", "--wiredTigerCacheSizeGB", "0.25"]
+    healthcheck:
+      test: ["CMD-SHELL", "mongosh --quiet --eval \"quit(db.adminCommand('ping').ok ? 0 : 1)\""]
+      interval: 2s
+      timeout: 5s
+      retries: 30
+      start_period: 5s
+    volumes:
+      - mongo-data:/data/db
+    # Deliberately not published: nothing outside the compose network needs it,
+    # and a host port would collide with a local mongod.
+
+  api:
+    build:
+      context: .
+      dockerfile: api/Dockerfile
+      # `:-` keeps the key optional: absent from the environment, the build still
+      # runs and the bundle simply carries the unkeyed style.
+      args:
+        VITE_CARTO_API_KEY: ${VITE_CARTO_API_KEY:-}
+    image: ifoa-api:local
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/aero_pipeline
+      NODE_ENV: production
+      PORT: "3000"
+    ports:
+      - "127.0.0.1:3000:3000"
+    # No dependency on pipeline: an empty database is a valid state (the console
+    # renders "Publication unavailable"), and coupling them would make the API
+    # wait ~40 s for a parse it does not need.
+    restart: unless-stopped
+
+  pipeline:
+    build:
+      context: .
+      dockerfile: pipeline/Dockerfile
+    image: ifoa-pipeline:local
+    # Behind a profile: `docker compose up -d` must not run an ingest, and the
+    # pipeline is a one-shot tool, not a service.
+    profiles: ["tools"]
+    depends_on:
+      mongo:
+        condition: service_healthy
+    environment:
+      MONGO_URI: mongodb://mongo:27017/aero_pipeline
+    volumes:
+      # The committed snapshot is read, never written. Read-only makes that a
+      # kernel guarantee instead of a convention.
+      - ./data/raw:/app/data/raw:ro
+      - ./config:/app/config:ro
+    restart: "no"
+
+volumes:
+  mongo-data:

@@ -18,3 +18,6 @@ web/node_modules/
 web/dist/
 
 web/.env.local
+
+# Compose reads the root .env for ${VITE_CARTO_API_KEY}; it holds a real key.
+.env
