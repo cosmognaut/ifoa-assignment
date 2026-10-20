@@ -1,10 +1,10 @@
 <p align="center">
     <img src="./assets/eaip-wordmark.svg" alt="eAIP wordmark" />
 </p>
-<h1 align="center">eAIP Belgium</h1>
+<div align="center">
+    <h1 align="center">eAIP Belgium <a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-darkgreen?link=https%3A%2F%2Fmagpie.ishu.foo%2F" alt="visit button" /></a> </h1>
+</div>
 <p align="center">Aeronautical data from the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP)</p>
-
-<a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-darkgreen?link=https%3A%2F%2Fmagpie.ishu.foo%2F" alt="visit button" /></a>
 
 <p align="center">
     <img src="./assets/eAIP_BELGIUM_map.png" alt="UI screenshot" />
