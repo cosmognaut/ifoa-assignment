@@ -1,7 +1,9 @@
 <p align="center">
     <img src="./assets/eaip-wordmark.svg" alt="eAIP wordmark" />
 </p>
-<h1 align="center">eAIP Belgium</h1>
+<div align="center">
+    <h1 align="center">eAIP Belgium <a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-darkgreen?link=https%3A%2F%2Fmagpie.ishu.foo%2F" alt="visit button" /></a> </h1>
+</div>
 <p align="center">Aeronautical data from the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP)</p>
 
 <a href="https://aip.ishu.foo/"><img src="https://img.shields.io/badge/visit-aip.ishu.foo-c8ff00?labelColor=0d1117" alt="live console" /></a>
@@ -21,7 +23,7 @@
 6. [Known limitations](#known-limitations)
 
 ## Overview
-This system, as presented, ingests, validates and diffs the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP) published by (skeyes)[https://www.skeyes.be/] across consecutive 28-day AIRAC cycles.
+This system, as presented, ingests, validates and diffs the official Belgium and Luxembourg Electronic Aeronautical Information Publication (eAIP) published by [skeyes](https://www.skeyes.be/) across consecutive 28-day AIRAC cycles.
 
 The main goal here was to convert unstructured HTML tables into structured, cryptographically fingerprinted (and hence verifiable) aeronautical features with complete information about where they came from (provenance). When a new cycle is published, this system isolates changes down to the individual field modifications (ex. reduced runway LDA) and halts promotion if safety-critical invariants are violated.
 
