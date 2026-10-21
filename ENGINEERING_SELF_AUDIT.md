@@ -50,7 +50,7 @@ One row: the next edition adds a military UAS training zone to ENR 5.1 and chang
 
 `Verify:` `grep -n "PublicationStatus.REJECTED" pipeline/cli.py`; `.venv/bin/python -m pytest tests/test_diff_and_quarantine.py::test_s1_quarantine_persists_rejected_publication_to_mongo -q`
 
-**The four change buckets.** `NEW`, `MODIFIED`, `DELETED`, `UNCHANGED` (`pipeline/models/change.py`). `pipeline diff` prints the counts and the first twenty rows, persists them to `changes`, and `GET /api/changes` serves them. Two pairs are stored and they are different things: `2026-10-01-current` → `2026-10-29` holds one genuine row, while `2026-10-01` → `2026-10-01-current` holds 321 rows that compare two ids of the same physical edition, an artefact of the cycle-id defect in section 5, not a change record.
+**The four change buckets.** `NEW`, `MODIFIED`, `DELETED`, `UNCHANGED` (`pipeline/models/change.py`). `pipeline diff` prints the counts and the first twenty rows, persists them to `changes`, and `GET /api/changes` serves them. Two pairs are possible and they are different things: `2026-10-01-current` → `2026-10-29` yields one genuine row, while `2026-10-01` → `2026-10-01-current` yields 321 rows that compare two ids of the same physical edition, ann artefact of the cycle-id defect in section 5, not a change record.
 
 `Verify:` `grep -n "ChangeStatus" pipeline/models/change.py`; `curl -s 'localhost:3000/api/changes?from=2026-10-01-current&to=2026-10-29'`
 
@@ -110,7 +110,7 @@ One row: the next edition adds a military UAS training zone to ENR 5.1 and chang
 |---|---|
 | The map shows the airspace. | The map shows point and line features: aerodromes, navaids, waypoints, runway centrelines, routes. Airspace exists as attributes only; the register lists the 241 features with no geometry. |
 | The map shows all 663 features. | 422 are drawable; 241 have no geometry by design. |
-| `GET /api/changes` is the change log. | It requires explicit `from` and `to`. The `2026-10-01-current` → `2026-10-29` pair is genuine (one `NEW` row); the 321-row `2026-10-01` → `2026-10-01-current` pair is a cycle-id artefact, not a change record. |
+| `GET /api/changes` is the change log. | It requires explicit `from` and `to`. The `2026-10-01-current` → `2026-10-29` pair is genuine (one `NEW` row); a 321-row `2026-10-01` → `2026-10-01-current` pair produced by the cycle-id collision is an artefact of the key rather than a change record (observed during development; the shipped database stores no diff). |
 | The test count is a round number. | 152: 101 pipeline (pytest), 26 API (`node --test` against the real MongoDB), 25 web (Vitest + jsdom, hermetic). |
 | The pipeline runs on a schedule. | It does not. `check-updates` is a command a human runs; there is no cron entry and no CI configuration, and `.github/` does not exist in the repository. |
 | Something is deployed and serving users. | Nothing is deployed. MongoDB, the Node API and Vite run locally on 27017 / 3000 / 5173. The dataset is also committed as `data/export/2026-10-01-current/` so it can be inspected with nothing running at all. |
