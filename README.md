@@ -26,7 +26,7 @@ This system, as presented, ingests, validates and diffs the official Belgium and
 The main goal here was to convert unstructured HTML tables into structured, cryptographically fingerprinted (and hence verifiable) aeronautical features with complete information about where they came from (provenance). When a new cycle is published, this system isolates changes down to the individual field modifications (ex. reduced runway LDA) and halts promotion if safety-critical invariants are violated.
 
 ## Architecture
-For detailed information, see `architecture.typ`/PDF. A diagram for its working is given below. For _why_ a certain decision was made, see [`DECISION_LOG.md`](DECISION_LOG.md).
+For detailed information, see [the PDF](https://github.com/cosmognaut/ifoa-assignment/blob/main/architecture.pdf). A diagram for its working is given below. For _why_ a certain decision was made, see [`DECISION_LOG.md`](DECISION_LOG.md).
 
 ```mermaid
 flowchart TD
