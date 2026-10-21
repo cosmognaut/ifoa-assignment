@@ -75,7 +75,12 @@ def test_promotion_gate_enforces_disappearance_thresholds():
 
 def test_s1_quarantine_persists_rejected_publication_to_mongo():
     """Tests S1: Proves that failing the promotion gate writes Publication{status: rejected} and issues to MongoDB."""
-    loader = MongoLoader()
+    try:
+        loader = MongoLoader()
+        loader.client.admin.command('ping')
+    except Exception as exc:
+        pytest.skip(f"MongoDB not reachable on localhost:27017: {exc}")
+
     test_cycle = "test-quarantine-cycle"
 
     bad_issue = ValidationIssue(
